@@ -255,7 +255,7 @@ pub fn view(frame: &mut Frame, model: &Model) {
 fn selected_agent_label(model: &Model) -> String {
     if let Some(id) = model.selected_agent_id.as_deref() {
         if let Some(a) = model.agents.iter().find(|a| a.id == id) {
-            return format!("{}", a.name);
+            return a.name.to_string();
         }
         return id.to_string();
     }
