@@ -8,6 +8,7 @@ use ratatui::{
         ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
+use textwrap::Options;
 
 use super::{
     Model,
@@ -69,17 +70,20 @@ pub fn view(frame: &mut Frame, model: &Model) {
         top_inner
     };
 
-    // For a wrapped paragraph we can't cheaply compute post-wrap line count, so we approximate
-    // with the raw line count (good enough for a visible scrollbar).
-    let prompts_lines = model.prompts_raw.lines().count().saturating_add(1);
-    let prompts_inner_h = top_inner.height as usize;
+    let prompts_wrapped = wrap_preserve_newlines(&model.prompts_raw, top_content_area.width);
+    let prompts_lines = prompts_wrapped.len();
+    let prompts_inner_h = top_content_area.height as usize;
     let prompts_max_scroll_from_top = prompts_lines.saturating_sub(prompts_inner_h);
     let prompts_scroll_from_top =
         (model.prompts_scroll as usize).min(prompts_max_scroll_from_top);
 
-    let top_widget = Paragraph::new(model.prompts_raw.clone())
-        .wrap(Wrap { trim: false })
-        .scroll((prompts_scroll_from_top.min(u16::MAX as usize) as u16, 0));
+    let top_widget = Paragraph::new(Text::from(
+        prompts_wrapped
+            .into_iter()
+            .map(Line::from)
+            .collect::<Vec<Line<'static>>>(),
+    ))
+    .scroll((prompts_scroll_from_top.min(u16::MAX as usize) as u16, 0));
 
     // Agents window
     let selected_agent_label = selected_agent_label(model);
@@ -152,12 +156,7 @@ pub fn view(frame: &mut Frame, model: &Model) {
         frame.render_stateful_widget(list, agents, &mut state);
     }
 
-    let (chat_text, chat_lines) = chat_text(model);
-    let inner_h = bottom.height.saturating_sub(2) as usize; // borders
-    let max_scroll_from_top = chat_lines.saturating_sub(inner_h);
-    let max_scroll_from_top = max_scroll_from_top.min(u16::MAX as usize) as u16;
-    let from_bottom = model.chat_scroll_from_bottom.min(max_scroll_from_top);
-    let chat_scroll_from_top = max_scroll_from_top.saturating_sub(from_bottom);
+    // Build wrapped conversation lines based on the actual render width.
     let run_hint = match model.run_state {
         RunState::Idle => "[r run] ",
         RunState::Running => "[running] ",
@@ -184,8 +183,15 @@ pub fn view(frame: &mut Frame, model: &Model) {
         bottom_inner
     };
 
-    let bottom_widget = Paragraph::new(chat_text)
-        .wrap(Wrap { trim: false })
+    let chat_lines_vec = chat_lines_wrapped(model, content_area.width);
+    let chat_lines = chat_lines_vec.len();
+    let inner_h = content_area.height as usize;
+    let max_scroll_from_top = chat_lines.saturating_sub(inner_h);
+    let max_scroll_from_top = max_scroll_from_top.min(u16::MAX as usize) as u16;
+    let from_bottom = model.chat_scroll_from_bottom.min(max_scroll_from_top);
+    let chat_scroll_from_top = max_scroll_from_top.saturating_sub(from_bottom);
+
+    let bottom_widget = Paragraph::new(Text::from(chat_lines_vec))
         .scroll((chat_scroll_from_top, 0));
 
     frame.render_widget(top_block, top);
@@ -202,7 +208,7 @@ pub fn view(frame: &mut Frame, model: &Model) {
 
         let mut state = ScrollbarState::new(prompts_lines)
             .position(prompts_scroll_from_top)
-            .viewport_content_length(top_inner.height as usize);
+            .viewport_content_length(top_content_area.height as usize);
 
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .style(Style::default().fg(Color::DarkGray))
@@ -228,7 +234,7 @@ pub fn view(frame: &mut Frame, model: &Model) {
 
         let mut state = ScrollbarState::new(chat_lines)
             .position(chat_scroll_from_top as usize)
-            .viewport_content_length(bottom_inner.height as usize);
+            .viewport_content_length(content_area.height as usize);
 
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .style(Style::default().fg(Color::DarkGray))
@@ -256,8 +262,8 @@ fn selected_agent_label(model: &Model) -> String {
     "<none>".to_string()
 }
 
-fn chat_text(model: &Model) -> (Text<'static>, usize) {
-    let mut lines: Vec<Line<'static>> = Vec::new();
+fn chat_lines_wrapped(model: &Model, width: u16) -> Vec<Line<'static>> {
+    let mut out: Vec<Line<'static>> = Vec::new();
 
     for entry in &model.chat {
         let (label, style) = match entry.role {
@@ -270,12 +276,24 @@ fn chat_text(model: &Model) -> (Text<'static>, usize) {
             ChatRole::User => ("[you]", Style::default().fg(Color::Cyan)),
             ChatRole::Agent => ("[agent]", Style::default().fg(Color::Green)),
         };
+        let is_user = entry.role == ChatRole::User;
 
-        lines.push(Line::from(vec![Span::styled(label.to_string(), style)]));
-        for l in entry.content.lines() {
-            lines.push(Line::from(Span::raw(l.to_string())));
+        let mut label_line = Line::from(vec![Span::styled(label.to_string(), style)]);
+        if is_user {
+            label_line = label_line.right_aligned();
         }
-        lines.push(Line::from(""));
+        out.push(label_line);
+
+        for raw in entry.content.lines() {
+            for wrapped in wrap_one_line(raw, width) {
+                let mut line = Line::from(Span::raw(wrapped));
+                if is_user {
+                    line = line.right_aligned();
+                }
+                out.push(line);
+            }
+        }
+        out.push(Line::from(""));
     }
 
     if model.waiting_for_response {
@@ -283,15 +301,48 @@ fn chat_text(model: &Model) -> (Text<'static>, usize) {
         let style = Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::ITALIC);
-        lines.push(Line::from(vec![Span::styled(
-            format!("[agent] {spinner} waiting for response…"),
-            style,
-        )]));
-        lines.push(Line::from(""));
+        out.push(
+            Line::from(vec![Span::styled(
+                format!("[agent] {spinner} waiting for response…"),
+                style,
+            )])
+            .left_aligned(),
+        );
+        out.push(Line::from(""));
     }
 
-    let len = lines.len();
-    (Text::from(lines), len)
+    out
+}
+
+fn wrap_one_line(s: &str, width: u16) -> Vec<String> {
+    let w = width as usize;
+    if w == 0 {
+        return vec![String::new()];
+    }
+    if s.is_empty() {
+        return vec![String::new()];
+    }
+
+    let opts = Options::new(w).break_words(true);
+    textwrap::wrap(s, &opts)
+        .into_iter()
+        .map(|c| c.into_owned())
+        .collect()
+}
+
+fn wrap_preserve_newlines(s: &str, width: u16) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in s.lines() {
+        out.extend(wrap_one_line(line, width));
+    }
+    // `lines()` drops the final empty line if the string ends with '\n'
+    if s.ends_with('\n') {
+        out.push(String::new());
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
 }
 
 fn spinner_char(frame: usize) -> &'static str {
