@@ -61,12 +61,11 @@ fn extract_fenced_prompts(raw: &str) -> Vec<String> {
     for line in raw.lines() {
         let trimmed = line.trim_end();
         if !in_block {
-            if let Some(info) = trimmed.strip_prefix("```") {
-                if info.trim().eq_ignore_ascii_case("prompt") {
+            if let Some(info) = trimmed.strip_prefix("```")
+                && info.trim().eq_ignore_ascii_case("prompt") {
                     in_block = true;
                     buf.clear();
                 }
-            }
         } else if trimmed == "```" {
             in_block = false;
             let p = buf.trim().to_string();

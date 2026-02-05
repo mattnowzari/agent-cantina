@@ -215,6 +215,7 @@ struct ConverseResponseMessage {
     message: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConverseStep {
@@ -241,5 +242,6 @@ pub enum ConverseStep {
 pub struct ConverseResult {
     pub conversation_id: Option<String>,
     pub message: String,
+    #[allow(dead_code)]
     pub steps: Vec<ConverseStep>,
 }

@@ -68,7 +68,7 @@ fn read_msg() -> Result<Option<Msg>> {
                 Ok(Some(Msg::Key(key)))
             }
         }
-        Event::Resize(w, h) => Ok(Some(Msg::Resize { w, h })),
+        Event::Resize(_, _) => Ok(Some(Msg::Resize)),
         _ => Ok(None),
     }
 }

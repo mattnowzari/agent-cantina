@@ -11,7 +11,6 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                 KeyCode::Enter | KeyCode::Esc => model.modal = None,
                 _ => {}
             },
-            Msg::DismissModal => model.modal = None,
             _ => {}
         }
         return vec![];
@@ -127,7 +126,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             }
             vec![]
         }
-        Msg::Resize { .. } => vec![],
+        Msg::Resize => vec![],
 
         Msg::PromptsLoaded { raw, prompts } => {
             model.prompts_loaded = true;
@@ -239,12 +238,6 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             vec![]
         }
 
-        Msg::AgentSelected { agent_id } => {
-            model.selected_agent_id = Some(agent_id.clone());
-            model.config.agent_id = agent_id;
-            vec![]
-        }
-
         Msg::AppendChat(entry) => {
             model.chat.push(entry);
             vec![]
@@ -296,10 +289,6 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             vec![]
         }
 
-        Msg::DismissModal => {
-            model.modal = None;
-            vec![]
-        }
     }
 }
 

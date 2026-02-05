@@ -83,18 +83,15 @@ pub enum ActivePanel {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum RunState {
+    #[default]
     Idle,
     Running,
     Done,
     Error,
 }
 
-impl Default for RunState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum Modal {

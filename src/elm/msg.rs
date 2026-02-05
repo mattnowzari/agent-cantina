@@ -9,7 +9,7 @@ pub enum Msg {
     Tick,
     Quit,
     Key(KeyEvent),
-    Resize { w: u16, h: u16 },
+    Resize,
 
     PromptsLoaded { raw: String, prompts: Vec<String> },
     PromptsLoadFailed { error: String },
@@ -18,7 +18,6 @@ pub enum Msg {
 
     AgentsLoaded { agents: Vec<crate::elastic::AgentSummary> },
     AgentsLoadFailed { error: String },
-    AgentSelected { agent_id: String },
 
     AppendChat(ChatEntry),
     SetConversationId(Option<String>),
@@ -27,6 +26,4 @@ pub enum Msg {
     RunFailed { error: String },
 
     SetWaiting(bool),
-
-    DismissModal,
 }
