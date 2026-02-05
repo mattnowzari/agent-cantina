@@ -8,4 +8,4 @@ Should CVEs have SDH tickets filed for them?
 
 ## Prompt 3
 
-List three common use-cases for the Elastic Stack.
+Do we have any PDFs regarding the topic of Relevance?

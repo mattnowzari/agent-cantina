@@ -2,5 +2,6 @@
 pub enum Cmd {
     LoadPromptsFile { path: String },
     LoadEnv,
+    LoadAgents,
     StartRun,
 }

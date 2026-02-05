@@ -1,14 +1,25 @@
 use crate::config::Config;
+use crate::elastic::AgentSummary;
 
 #[derive(Debug, Clone)]
 pub struct Model {
     pub should_quit: bool,
     pub active: ActivePanel,
 
+    pub prompts_loaded: bool,
+    pub env_loaded: bool,
+
     pub prompts_path: String,
     pub prompts_raw: String,
     pub prompts: Vec<String>,
     pub prompts_scroll: u16,
+
+    pub agents_loading: bool,
+    pub agents_loaded: bool,
+    pub agents_error: Option<String>,
+    pub agents: Vec<AgentSummary>,
+    pub agent_selected_index: usize,
+    pub selected_agent_id: Option<String>,
 
     pub chat: Vec<ChatEntry>,
     /// How many lines above the bottom we are scrolled.
@@ -31,10 +42,20 @@ impl Default for Model {
             should_quit: false,
             active: ActivePanel::Top,
 
+            prompts_loaded: false,
+            env_loaded: false,
+
             prompts_path: "PROMPTS.md".to_string(),
             prompts_raw: String::new(),
             prompts: Vec::new(),
             prompts_scroll: 0,
+
+            agents_loading: false,
+            agents_loaded: false,
+            agents_error: None,
+            agents: Vec::new(),
+            agent_selected_index: 0,
+            selected_agent_id: None,
 
             chat: vec![ChatEntry::system(
                 "Loading PROMPTS.md and checking env (KIBANA_URL/ES_HOST, API_KEY/ES_API_KEY)…",
@@ -57,6 +78,7 @@ impl Default for Model {
 pub enum ActivePanel {
     #[default]
     Top,
+    Agents,
     Bottom,
 }
 

@@ -16,6 +16,10 @@ pub enum Msg {
 
     EnvLoaded { config: Config },
 
+    AgentsLoaded { agents: Vec<crate::elastic::AgentSummary> },
+    AgentsLoadFailed { error: String },
+    AgentSelected { agent_id: String },
+
     AppendChat(ChatEntry),
     SetConversationId(Option<String>),
     RunStarted,

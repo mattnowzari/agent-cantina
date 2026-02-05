@@ -115,16 +115,54 @@ fn execute_cmd(
                 let _ = tx.send(Msg::EnvLoaded { config: cfg });
             });
         }
+        Cmd::LoadAgents => {
+            let cfg = model.config.clone();
+            rt.spawn(async move {
+                if !cfg.is_ready() {
+                    let _ = tx.send(Msg::AgentsLoadFailed {
+                        error: "Missing KIBANA_URL/ES_HOST and/or API_KEY/ES_API_KEY.".to_string(),
+                    });
+                    return;
+                }
+                let client = match crate::elastic::AgentBuilderClient::new(&cfg) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = tx.send(Msg::AgentsLoadFailed {
+                            error: e.to_string(),
+                        });
+                        return;
+                    }
+                };
+
+                match client.list_agents().await {
+                    Ok(agents) => {
+                        let _ = tx.send(Msg::AgentsLoaded { agents });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Msg::AgentsLoadFailed {
+                            error: e.to_string(),
+                        });
+                    }
+                }
+            });
+        }
         Cmd::StartRun => {
             // Snapshot required state for the background run.
             let cfg = model.config.clone();
             let prompts = model.prompts.clone();
+            let selected_agent_id = model.selected_agent_id.clone();
 
             rt.spawn(async move {
                 if !cfg.is_ready() {
                     let _ = tx.send(Msg::RunFailed {
                         error: "Missing KIBANA_URL (or ES_HOST) and/or API_KEY (or ES_API_KEY)."
                             .to_string(),
+                    });
+                    return;
+                }
+                if selected_agent_id.as_deref().unwrap_or("").is_empty() {
+                    let _ = tx.send(Msg::RunFailed {
+                        error: "No agent selected. Pick an agent first, then run.".to_string(),
                     });
                     return;
                 }
@@ -138,6 +176,10 @@ fn execute_cmd(
                 let _ = tx.send(Msg::SetConversationId(None));
                 let _ = tx.send(Msg::RunStarted);
 
+                let mut cfg = cfg;
+                if let Some(agent_id) = selected_agent_id {
+                    cfg.agent_id = agent_id;
+                }
                 let client = match crate::elastic::AgentBuilderClient::new(&cfg) {
                     Ok(c) => c,
                     Err(e) => {

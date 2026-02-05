@@ -33,27 +33,84 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         Msg::Key(key) => {
             match key.code {
                 // Panel selection
-                KeyCode::Up | KeyCode::Left => model.active = ActivePanel::Top,
-                KeyCode::Down | KeyCode::Right => model.active = ActivePanel::Bottom,
-                KeyCode::Tab => {
-                    model.active = match model.active {
-                        ActivePanel::Top => ActivePanel::Bottom,
-                        ActivePanel::Bottom => ActivePanel::Top,
-                    }
-                }
+                KeyCode::Tab => cycle_panel(model, CycleDir::Forward),
+                KeyCode::BackTab => cycle_panel(model, CycleDir::Backward),
 
                 // Scrolling
-                KeyCode::Char('k') | KeyCode::PageUp => scroll_active(model, ScrollDir::Up),
-                KeyCode::Char('j') | KeyCode::PageDown => scroll_active(model, ScrollDir::Down),
+                KeyCode::Up | KeyCode::Char('k') | KeyCode::PageUp => {
+                    if model.active == ActivePanel::Agents {
+                        agent_prev(model);
+                    } else {
+                        scroll_active(model, ScrollDir::Up);
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') | KeyCode::PageDown => {
+                    if model.active == ActivePanel::Agents {
+                        agent_next(model);
+                    } else {
+                        scroll_active(model, ScrollDir::Down);
+                    }
+                }
                 KeyCode::End => {
                     if model.active == ActivePanel::Bottom {
                         model.chat_scroll_from_bottom = 0;
                     }
                 }
 
+                // Select agent + run
+                KeyCode::Enter => {
+                    if model.active == ActivePanel::Agents {
+                        if model.agents.is_empty() {
+                            model.modal = Some(super::model::Modal::Info {
+                                title: "No agents".to_string(),
+                                message: "No agents were returned by Agent Builder.".to_string(),
+                            });
+                            return vec![];
+                        }
+
+                        let idx = model.agent_selected_index.min(model.agents.len() - 1);
+                        let agent = model.agents[idx].clone();
+                        model.selected_agent_id = Some(agent.id.clone());
+                        model.config.agent_id = agent.id.clone();
+                        model.chat.push(super::model::ChatEntry::system(format!(
+                            "Selected agent: {} ({})",
+                            agent.name, agent.id
+                        )));
+                        model.active = ActivePanel::Bottom;
+
+                        if model.run_state != super::model::RunState::Running
+                            && model.config.is_ready()
+                            && !model.prompts.is_empty()
+                        {
+                            model.run_state = super::model::RunState::Running;
+                            return vec![Cmd::StartRun];
+                        }
+                    }
+                }
+
+                // Refresh agent list
+                KeyCode::Char('g') => {
+                    model.agents_loaded = false;
+                    model.agents_loading = false;
+                    model.agents_error = None;
+                    model.agents.clear();
+                    model.agent_selected_index = 0;
+                    model.selected_agent_id = None;
+                    return maybe_load_agents(model);
+                }
+
                 // Re-run prompts
                 KeyCode::Char('r') => {
                     if model.run_state != super::model::RunState::Running {
+                        if model.selected_agent_id.is_none() {
+                            model.modal = Some(super::model::Modal::Info {
+                                title: "Select an agent".to_string(),
+                                message: "Pick an agent in the Agents window (↑/↓ + Enter) before running prompts."
+                                    .to_string(),
+                            });
+                            model.active = ActivePanel::Agents;
+                            return vec![];
+                        }
                         model.run_state = super::model::RunState::Running;
                         return vec![Cmd::StartRun];
                     }
@@ -73,6 +130,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         Msg::Resize { .. } => vec![],
 
         Msg::PromptsLoaded { raw, prompts } => {
+            model.prompts_loaded = true;
             model.prompts_raw = raw;
             model.prompts = prompts;
             model.prompts_scroll = 0;
@@ -89,16 +147,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                 )));
             }
 
-            // Auto-run if configured.
-            if model.config.is_ready()
-                && !model.prompts.is_empty()
-                && model.run_state == super::model::RunState::Idle
-            {
-                model.run_state = super::model::RunState::Running;
-                vec![Cmd::StartRun]
-            } else {
-                vec![]
-            }
+            maybe_load_agents(model)
         }
 
         Msg::PromptsLoadFailed { error } => {
@@ -110,6 +159,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         }
 
         Msg::EnvLoaded { config } => {
+            model.env_loaded = true;
             model.config = config;
             let missing = model.config.missing();
             if !missing.is_empty() {
@@ -141,12 +191,58 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                 "Env loaded (KIBANA_URL/ES_HOST, API_KEY/ES_API_KEY).",
             ));
 
-            if !model.prompts.is_empty() && model.run_state == super::model::RunState::Idle {
-                model.run_state = super::model::RunState::Running;
-                vec![Cmd::StartRun]
-            } else {
-                vec![]
+            maybe_load_agents(model)
+        }
+
+        Msg::AgentsLoaded { agents } => {
+            model.agents_loading = false;
+            model.agents_loaded = true;
+            model.agents_error = None;
+            model.agents = agents;
+            model.active = ActivePanel::Agents;
+
+            if model.agents.is_empty() {
+                model.modal = Some(super::model::Modal::Error {
+                    title: "No agents found".to_string(),
+                    message: "Agent Builder returned 0 agents.".to_string(),
+                });
+                return vec![];
             }
+
+            // Preselect the agent from env/config if present.
+            if let Some(idx) = model
+                .agents
+                .iter()
+                .position(|a| a.id == model.config.agent_id)
+            {
+                model.agent_selected_index = idx;
+            } else {
+                model.agent_selected_index = 0;
+            }
+
+            model.chat.push(super::model::ChatEntry::system(format!(
+                "Loaded {} agent(s). Select one (↑/↓ + Enter).",
+                model.agents.len()
+            )));
+
+            vec![]
+        }
+
+        Msg::AgentsLoadFailed { error } => {
+            model.agents_loading = false;
+            model.agents_loaded = false;
+            model.agents_error = Some(error.clone());
+            model.modal = Some(super::model::Modal::Error {
+                title: "Failed to load agents".to_string(),
+                message: error,
+            });
+            vec![]
+        }
+
+        Msg::AgentSelected { agent_id } => {
+            model.selected_agent_id = Some(agent_id.clone());
+            model.config.agent_id = agent_id;
+            vec![]
         }
 
         Msg::AppendChat(entry) => {
@@ -208,6 +304,60 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
 }
 
 #[derive(Debug, Clone, Copy)]
+enum CycleDir {
+    Forward,
+    Backward,
+}
+
+fn cycle_panel(model: &mut Model, dir: CycleDir) {
+    model.active = match (model.active, dir) {
+        (ActivePanel::Top, CycleDir::Forward) => ActivePanel::Agents,
+        (ActivePanel::Agents, CycleDir::Forward) => ActivePanel::Bottom,
+        (ActivePanel::Bottom, CycleDir::Forward) => ActivePanel::Top,
+
+        (ActivePanel::Top, CycleDir::Backward) => ActivePanel::Bottom,
+        (ActivePanel::Bottom, CycleDir::Backward) => ActivePanel::Agents,
+        (ActivePanel::Agents, CycleDir::Backward) => ActivePanel::Top,
+    };
+}
+
+fn maybe_load_agents(model: &mut Model) -> Vec<Cmd> {
+    if !model.config.is_ready() || !model.prompts_loaded {
+        return vec![];
+    }
+    if model.agents_loaded || model.agents_loading {
+        return vec![];
+    }
+
+    model.agents_loading = true;
+    model.agents_error = None;
+    model.active = ActivePanel::Agents;
+    model.chat.push(super::model::ChatEntry::system(
+        "Loading agents… (press ↑/↓ once loaded, Enter to select)",
+    ));
+
+    vec![Cmd::LoadAgents]
+}
+
+fn agent_prev(model: &mut Model) {
+    if model.agents.is_empty() {
+        return;
+    }
+    if model.agent_selected_index == 0 {
+        model.agent_selected_index = model.agents.len() - 1;
+    } else {
+        model.agent_selected_index -= 1;
+    }
+}
+
+fn agent_next(model: &mut Model) {
+    if model.agents.is_empty() {
+        return;
+    }
+    model.agent_selected_index = (model.agent_selected_index + 1) % model.agents.len();
+}
+
+#[derive(Debug, Clone, Copy)]
 enum ScrollDir {
     Up,
     Down,
@@ -219,6 +369,7 @@ fn scroll_active(model: &mut Model, dir: ScrollDir) {
         ActivePanel::Top => {
             model.prompts_scroll = scroll(model.prompts_scroll, dir, amount);
         }
+        ActivePanel::Agents => {}
         ActivePanel::Bottom => match dir {
             ScrollDir::Up => {
                 model.chat_scroll_from_bottom = model.chat_scroll_from_bottom.saturating_add(amount)

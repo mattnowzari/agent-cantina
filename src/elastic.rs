@@ -5,6 +5,13 @@ use serde::{Deserialize, Serialize};
 use crate::config::Config;
 
 #[derive(Debug, Clone)]
+pub struct AgentSummary {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct AgentBuilderClient {
     base_url: String,
     agent_id: String,
@@ -91,6 +98,33 @@ impl AgentBuilderClient {
             None => format!("{}/api/agent_builder/converse", self.base_url),
         }
     }
+
+    pub async fn list_agents(&self) -> Result<Vec<AgentSummary>> {
+        let url = self.list_agents_url();
+        let resp = self
+            .http
+            .get(url)
+            .send()
+            .await
+            .context("failed to send request")?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("Agent Builder API error {}: {}", status, text);
+        }
+
+        let v: serde_json::Value =
+            serde_json::from_str(&text).context("failed to parse list agents response JSON")?;
+        parse_agents(v).context("failed to parse agents from response")
+    }
+
+    fn list_agents_url(&self) -> String {
+        match self.space.as_deref() {
+            Some(space) => format!("{}/s/{}/api/agent_builder/agents", self.base_url, space),
+            None => format!("{}/api/agent_builder/agents", self.base_url),
+        }
+    }
 }
 
 fn normalize_base_url(raw: &str) -> String {
@@ -100,6 +134,63 @@ fn normalize_base_url(raw: &str) -> String {
     } else {
         format!("https://{}", trimmed)
     }
+}
+
+fn parse_agents(v: serde_json::Value) -> Result<Vec<AgentSummary>> {
+    fn as_arr(v: &serde_json::Value) -> Option<&Vec<serde_json::Value>> {
+        v.as_array()
+    }
+
+    // Try common response shapes: [..], { agents: [..] }, { data: [..] }, { items: [..] }
+    let arr = if let Some(a) = as_arr(&v) {
+        a
+    } else if let Some(a) = v.get("agents").and_then(as_arr) {
+        a
+    } else if let Some(a) = v.get("data").and_then(as_arr) {
+        a
+    } else if let Some(a) = v.get("items").and_then(as_arr) {
+        a
+    } else if let Some(a) = v.get("results").and_then(as_arr) {
+        a
+    } else {
+        anyhow::bail!("unexpected list agents JSON shape: {}", v);
+    };
+
+    let mut out = Vec::new();
+    for item in arr {
+        let obj = item.as_object().context("agent item is not an object")?;
+
+        let id = obj
+            .get("id")
+            .or_else(|| obj.get("agent_id"))
+            .or_else(|| obj.get("agentId"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if id.trim().is_empty() {
+            continue;
+        }
+
+        let name = obj
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&id)
+            .to_string();
+        let description = obj
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        out.push(AgentSummary {
+            id,
+            name,
+            description,
+        });
+    }
+
+    // Stable ordering for selection.
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
 }
 
 #[derive(Debug, Serialize)]
