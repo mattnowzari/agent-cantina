@@ -4,7 +4,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{
-        Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar,
         ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
@@ -15,7 +15,7 @@ use super::{
     model::{ActivePanel, ChatRole, Modal, RunState},
 };
 
-pub fn view(frame: &mut Frame, model: &Model) {
+pub fn view(frame: &mut Frame, model: &mut Model) {
     let area = frame.area();
 
     let gap: u16 = 1;
@@ -98,30 +98,48 @@ pub fn view(frame: &mut Frame, model: &Model) {
 
     if !model.config.is_ready() {
         let w = Paragraph::new("Waiting for env (KIBANA_URL/ES_HOST and API_KEY/ES_API_KEY)…")
-            .block(agents_block)
             .wrap(Wrap { trim: false });
-        frame.render_widget(w, agents);
+        let inner = agents_block.inner(agents);
+        frame.render_widget(agents_block, agents);
+        frame.render_widget(w, inner);
     } else if !model.prompts_loaded {
         let w = Paragraph::new("Waiting for PROMPTS.md…")
-            .block(agents_block)
             .wrap(Wrap { trim: false });
-        frame.render_widget(w, agents);
+        let inner = agents_block.inner(agents);
+        frame.render_widget(agents_block, agents);
+        frame.render_widget(w, inner);
     } else if model.agents_loading {
         let w = Paragraph::new("Loading agents from Agent Builder…")
-            .block(agents_block)
             .wrap(Wrap { trim: false });
-        frame.render_widget(w, agents);
+        let inner = agents_block.inner(agents);
+        frame.render_widget(agents_block, agents);
+        frame.render_widget(w, inner);
     } else if let Some(err) = &model.agents_error {
         let w = Paragraph::new(format!("Failed to load agents:\n\n{err}"))
-            .block(agents_block)
             .wrap(Wrap { trim: false });
-        frame.render_widget(w, agents);
+        let inner = agents_block.inner(agents);
+        frame.render_widget(agents_block, agents);
+        frame.render_widget(w, inner);
     } else if model.agents.is_empty() {
         let w = Paragraph::new("No agents loaded. Press 'g' to reload.")
-            .block(agents_block)
             .wrap(Wrap { trim: false });
-        frame.render_widget(w, agents);
+        let inner = agents_block.inner(agents);
+        frame.render_widget(agents_block, agents);
+        frame.render_widget(w, inner);
     } else {
+        let agents_inner = agents_block.inner(agents);
+        frame.render_widget(agents_block, agents);
+        let agents_content_area = if agents_inner.width >= 2 {
+            ratatui::layout::Rect {
+                x: agents_inner.x,
+                y: agents_inner.y,
+                width: agents_inner.width.saturating_sub(1),
+                height: agents_inner.height,
+            }
+        } else {
+            agents_inner
+        };
+
         let items: Vec<ListItem> = model
             .agents
             .iter()
@@ -141,7 +159,6 @@ pub fn view(frame: &mut Frame, model: &Model) {
             .collect();
 
         let list = List::new(items)
-            .block(agents_block)
             .highlight_style(
                 Style::default()
                     .fg(Color::Black)
@@ -150,10 +167,34 @@ pub fn view(frame: &mut Frame, model: &Model) {
             )
             .highlight_symbol("▶ ");
 
-        let mut state = ListState::default();
-        let idx = model.agent_selected_index.min(model.agents.len().saturating_sub(1));
-        state.select(Some(idx));
-        frame.render_stateful_widget(list, agents, &mut state);
+        // Render with persistent state so ratatui can maintain offset for natural scrolling.
+        frame.render_stateful_widget(list, agents_content_area, &mut model.agents_list_state);
+
+        // Scrollbar (right side of agents pane)
+        if agents_inner.width >= 2 && agents_inner.height > 0 && !model.agents.is_empty() {
+            let sb_area = ratatui::layout::Rect {
+                x: agents_inner.x + agents_inner.width - 1,
+                y: agents_inner.y,
+                width: 1,
+                height: agents_inner.height,
+            };
+
+            // Best-effort: treat each agent as one "row" for scrollbar purposes.
+            let pos = model.agents_list_state.selected().unwrap_or(0);
+            let mut state = ScrollbarState::new(model.agents.len())
+                .position(pos)
+                .viewport_content_length(agents_content_area.height as usize);
+
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .style(Style::default().fg(Color::DarkGray))
+                .thumb_style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                );
+
+            frame.render_stateful_widget(scrollbar, sb_area, &mut state);
+        }
     }
 
     // Build wrapped conversation lines based on the actual render width.
@@ -278,7 +319,8 @@ fn chat_lines_wrapped(model: &Model, width: u16) -> Vec<Line<'static>> {
         };
         let is_user = entry.role == ChatRole::User;
 
-        let mut label_line = Line::from(vec![Span::styled(label.to_string(), style)]);
+        let label_text = format!("[{}] {}", entry.timestamp, label);
+        let mut label_line = Line::from(vec![Span::styled(label_text, style)]);
         if is_user {
             label_line = label_line.right_aligned();
         }

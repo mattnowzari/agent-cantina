@@ -1,7 +1,8 @@
 use crate::config::Config;
 use crate::elastic::AgentSummary;
+use ratatui::widgets::ListState;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Model {
     pub should_quit: bool,
     pub active: ActivePanel,
@@ -20,6 +21,7 @@ pub struct Model {
     pub agents: Vec<AgentSummary>,
     pub agent_selected_index: usize,
     pub selected_agent_id: Option<String>,
+    pub agents_list_state: ListState,
 
     pub chat: Vec<ChatEntry>,
     /// How many lines above the bottom we are scrolled.
@@ -56,6 +58,7 @@ impl Default for Model {
             agents: Vec::new(),
             agent_selected_index: 0,
             selected_agent_id: None,
+            agents_list_state: ListState::default(),
 
             chat: vec![ChatEntry::system(
                 "Loading PROMPTS.md and checking env (KIBANA_URL/ES_HOST, API_KEY/ES_API_KEY)…",
@@ -103,6 +106,7 @@ pub enum Modal {
 #[derive(Debug, Clone)]
 pub struct ChatEntry {
     pub role: ChatRole,
+    pub timestamp: String,
     pub content: String,
 }
 
@@ -110,6 +114,7 @@ impl ChatEntry {
     pub fn system(msg: impl Into<String>) -> Self {
         Self {
             role: ChatRole::System,
+            timestamp: now_timestamp(),
             content: msg.into(),
         }
     }
@@ -117,6 +122,7 @@ impl ChatEntry {
     pub fn user(msg: impl Into<String>) -> Self {
         Self {
             role: ChatRole::User,
+            timestamp: now_timestamp(),
             content: msg.into(),
         }
     }
@@ -124,9 +130,15 @@ impl ChatEntry {
     pub fn agent(msg: impl Into<String>) -> Self {
         Self {
             role: ChatRole::Agent,
+            timestamp: now_timestamp(),
             content: msg.into(),
         }
     }
+}
+
+fn now_timestamp() -> String {
+    // Keep this cheap + stable for TUI display.
+    chrono::Local::now().format("%H:%M:%S").to_string()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -5,7 +5,20 @@ use crate::elm::{Cmd, Model, Msg};
 
 pub fn run() -> Result<()> {
     let terminal = ratatui::init();
+    // Ensure mouse-wheel events (scrolling) work.
+    ratatui::crossterm::execute!(
+        std::io::stdout(),
+        ratatui::crossterm::event::EnableMouseCapture
+    )?;
+
     let result = run_with_terminal(terminal);
+
+    // Best-effort cleanup (restore() also does terminal cleanup, but we explicitly
+    // disable mouse capture so terminals that support it behave consistently).
+    let _ = ratatui::crossterm::execute!(
+        std::io::stdout(),
+        ratatui::crossterm::event::DisableMouseCapture
+    );
     ratatui::restore();
     result
 }
@@ -42,7 +55,7 @@ fn run_with_terminal(mut terminal: DefaultTerminal) -> Result<()> {
             }
         }
 
-        terminal.draw(|frame| crate::elm::view(frame, &model))?;
+        terminal.draw(|frame| crate::elm::view(frame, &mut model))?;
     }
 
     Ok(())
@@ -68,6 +81,7 @@ fn read_msg() -> Result<Option<Msg>> {
                 Ok(Some(Msg::Key(key)))
             }
         }
+        Event::Mouse(mouse) => Ok(Some(Msg::Mouse(mouse))),
         Event::Resize(_, _) => Ok(Some(Msg::Resize)),
         _ => Ok(None),
     }

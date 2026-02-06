@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "alembic-log",
  "anyhow",
+ "chrono",
  "dotenvy",
  "ratatui",
  "reqwest",

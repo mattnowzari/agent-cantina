@@ -1,4 +1,4 @@
-use ratatui::crossterm::event::KeyCode;
+use ratatui::crossterm::event::{KeyCode, MouseEventKind};
 
 use super::{Cmd, Model, Msg, model::ActivePanel};
 
@@ -36,20 +36,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                 KeyCode::BackTab => cycle_panel(model, CycleDir::Backward),
 
                 // Scrolling
-                KeyCode::Up | KeyCode::Char('k') | KeyCode::PageUp => {
-                    if model.active == ActivePanel::Agents {
-                        agent_prev(model);
-                    } else {
-                        scroll_active(model, ScrollDir::Up);
-                    }
-                }
-                KeyCode::Down | KeyCode::Char('j') | KeyCode::PageDown => {
-                    if model.active == ActivePanel::Agents {
-                        agent_next(model);
-                    } else {
-                        scroll_active(model, ScrollDir::Down);
-                    }
-                }
+                KeyCode::Up | KeyCode::Char('k') => scroll_or_select(model, ScrollDir::Up, 3),
+                KeyCode::Down | KeyCode::Char('j') => scroll_or_select(model, ScrollDir::Down, 3),
+                KeyCode::PageUp => scroll_or_select(model, ScrollDir::Up, 10),
+                KeyCode::PageDown => scroll_or_select(model, ScrollDir::Down, 10),
                 KeyCode::End => {
                     if model.active == ActivePanel::Bottom {
                         model.chat_scroll_from_bottom = 0;
@@ -95,6 +85,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                     model.agents.clear();
                     model.agent_selected_index = 0;
                     model.selected_agent_id = None;
+                    model.agents_list_state = ratatui::widgets::ListState::default();
                     return maybe_load_agents(model);
                 }
 
@@ -115,6 +106,14 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                     }
                 }
 
+                _ => {}
+            }
+            vec![]
+        }
+        Msg::Mouse(mouse) => {
+            match mouse.kind {
+                MouseEventKind::ScrollUp => scroll_or_select(model, ScrollDir::Up, 3),
+                MouseEventKind::ScrollDown => scroll_or_select(model, ScrollDir::Down, 3),
                 _ => {}
             }
             vec![]
@@ -218,6 +217,9 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             } else {
                 model.agent_selected_index = 0;
             }
+            model
+                .agents_list_state
+                .select(Some(model.agent_selected_index.min(model.agents.len() - 1)));
 
             model.chat.push(super::model::ChatEntry::system(format!(
                 "Loaded {} agent(s). Select one (↑/↓ + Enter).",
@@ -337,6 +339,7 @@ fn agent_prev(model: &mut Model) {
     } else {
         model.agent_selected_index -= 1;
     }
+    model.agents_list_state.select(Some(model.agent_selected_index));
 }
 
 fn agent_next(model: &mut Model) {
@@ -344,6 +347,7 @@ fn agent_next(model: &mut Model) {
         return;
     }
     model.agent_selected_index = (model.agent_selected_index + 1) % model.agents.len();
+    model.agents_list_state.select(Some(model.agent_selected_index));
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -352,8 +356,19 @@ enum ScrollDir {
     Down,
 }
 
-fn scroll_active(model: &mut Model, dir: ScrollDir) {
-    let amount: u16 = 1;
+fn scroll_or_select(model: &mut Model, dir: ScrollDir, amount: u16) {
+    if model.active == ActivePanel::Agents {
+        // Keep agent selection predictable: wheel/arrow moves by 1, PageUp/Down jumps more.
+        let steps = if amount >= 10 { 5 } else { 1 };
+        for _ in 0..steps {
+            match dir {
+                ScrollDir::Up => agent_prev(model),
+                ScrollDir::Down => agent_next(model),
+            }
+        }
+        return;
+    }
+
     match model.active {
         ActivePanel::Top => {
             model.prompts_scroll = scroll(model.prompts_scroll, dir, amount);

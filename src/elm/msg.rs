@@ -1,4 +1,4 @@
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 
 use super::model::ChatEntry;
 use crate::config::Config;
@@ -9,6 +9,7 @@ pub enum Msg {
     Tick,
     Quit,
     Key(KeyEvent),
+    Mouse(MouseEvent),
     Resize,
 
     PromptsLoaded { raw: String, prompts: Vec<String> },
