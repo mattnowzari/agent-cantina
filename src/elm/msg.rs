@@ -16,6 +16,8 @@ pub enum Msg {
 
     PromptsLoaded { raw: String, prompts: Vec<String> },
     PromptsLoadFailed { error: String },
+    PromptsSaved { raw: String, prompts: Vec<String> },
+    PromptsSaveFailed { error: String },
 
     EnvLoaded { config: Config },
 

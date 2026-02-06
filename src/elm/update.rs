@@ -33,6 +33,12 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         }
 
         Msg::Key(key) => {
+            // Prompts editor: capture most keys when Prompts panel is active.
+            if model.active == ActivePanel::Top {
+                if let Some(cmds) = handle_prompts_editor_key(model, key) {
+                    return cmds;
+                }
+            }
             match key.code {
                 // Panel selection
                 KeyCode::Tab => cycle_panel(model, CycleDir::Forward),
@@ -85,14 +91,16 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
 
                 // Refresh agent list
                 KeyCode::Char('g') => {
-                    model.agents_loaded = false;
-                    model.agents_loading = false;
-                    model.agents_error = None;
-                    model.agents.clear();
-                    model.agent_selected_index = 0;
-                    model.selected_agent_id = None;
-                    model.agents_list_state = ratatui::widgets::ListState::default();
-                    return maybe_load_agents(model);
+                    if model.active == ActivePanel::Agents {
+                        model.agents_loaded = false;
+                        model.agents_loading = false;
+                        model.agents_error = None;
+                        model.agents.clear();
+                        model.agent_selected_index = 0;
+                        model.selected_agent_id = None;
+                        model.agents_list_state = ratatui::widgets::ListState::default();
+                        return maybe_load_agents(model);
+                    }
                 }
 
                 // Create a new agent
@@ -158,6 +166,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             model.prompts_raw = raw;
             model.prompts = prompts;
             model.prompts_scroll = 0;
+            model.prompts_cursor = model.prompts_raw.len();
 
             if model.prompts.is_empty() {
                 model.chat.push(super::model::ChatEntry::system(
@@ -177,6 +186,24 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         Msg::PromptsLoadFailed { error } => {
             model.modal = Some(super::model::Modal::Error {
                 title: "Failed to load PROMPTS.md".to_string(),
+                message: error,
+            });
+            vec![]
+        }
+
+        Msg::PromptsSaved { raw, prompts } => {
+            model.prompts_loaded = true;
+            model.prompts_raw = raw;
+            model.prompts = prompts;
+            model.chat.push(super::model::ChatEntry::system("Saved PROMPTS.md."));
+            // Keep cursor in range.
+            model.prompts_cursor = model.prompts_cursor.min(model.prompts_raw.len());
+            vec![]
+        }
+
+        Msg::PromptsSaveFailed { error } => {
+            model.modal = Some(super::model::Modal::Error {
+                title: "Failed to save PROMPTS.md".to_string(),
                 message: error,
             });
             vec![]
@@ -392,6 +419,203 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         }
 
     }
+}
+
+fn handle_prompts_editor_key(model: &mut Model, key: ratatui::crossterm::event::KeyEvent) -> Option<Vec<Cmd>> {
+    // Ctrl+S saves to disk.
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('s') {
+        return Some(vec![Cmd::SavePromptsFile {
+            path: model.prompts_path.clone(),
+            raw: model.prompts_raw.clone(),
+        }]);
+    }
+    // Ctrl+R reloads from disk.
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
+        return Some(vec![Cmd::LoadPromptsFile {
+            path: model.prompts_path.clone(),
+        }]);
+    }
+
+    // Don't treat Alt/Ctrl modified chars as text entry.
+    if key.modifiers.contains(KeyModifiers::ALT) {
+        return Some(vec![]);
+    }
+
+    match key.code {
+        KeyCode::Left => {
+            model.prompts_cursor = prev_char_boundary(&model.prompts_raw, model.prompts_cursor);
+            ensure_prompts_cursor_visible(model);
+            Some(vec![])
+        }
+        KeyCode::Right => {
+            model.prompts_cursor = next_char_boundary(&model.prompts_raw, model.prompts_cursor);
+            ensure_prompts_cursor_visible(model);
+            Some(vec![])
+        }
+        KeyCode::Up => {
+            model.prompts_cursor = move_cursor_vertical(&model.prompts_raw, model.prompts_cursor, -1);
+            ensure_prompts_cursor_visible(model);
+            Some(vec![])
+        }
+        KeyCode::Down => {
+            model.prompts_cursor = move_cursor_vertical(&model.prompts_raw, model.prompts_cursor, 1);
+            ensure_prompts_cursor_visible(model);
+            Some(vec![])
+        }
+        KeyCode::Backspace => {
+            if model.prompts_cursor > 0 {
+                let prev = prev_char_boundary(&model.prompts_raw, model.prompts_cursor);
+                model.prompts_raw.replace_range(prev..model.prompts_cursor, "");
+                model.prompts_cursor = prev;
+                // Re-parse for run readiness without requiring a save.
+                model.prompts = crate::prompts::parse_prompts_markdown(model.prompts_raw.clone()).prompts;
+                ensure_prompts_cursor_visible(model);
+            }
+            Some(vec![])
+        }
+        KeyCode::Enter => {
+            let idx = model.prompts_cursor.min(model.prompts_raw.len());
+            model.prompts_raw.insert(idx, '\n');
+            model.prompts_cursor = idx + 1;
+            model.prompts = crate::prompts::parse_prompts_markdown(model.prompts_raw.clone()).prompts;
+            ensure_prompts_cursor_visible(model);
+            Some(vec![])
+        }
+        KeyCode::Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                return None; // let global handler see Ctrl combos we didn't consume
+            }
+            let idx = model.prompts_cursor.min(model.prompts_raw.len());
+            model.prompts_raw.insert(idx, c);
+            model.prompts_cursor = idx + c.len_utf8();
+            model.prompts = crate::prompts::parse_prompts_markdown(model.prompts_raw.clone()).prompts;
+            ensure_prompts_cursor_visible(model);
+            Some(vec![])
+        }
+        _ => None,
+    }
+}
+
+fn prev_char_boundary(s: &str, idx: usize) -> usize {
+    if idx == 0 {
+        return 0;
+    }
+    s[..idx].char_indices().last().map(|(i, _)| i).unwrap_or(0)
+}
+
+fn next_char_boundary(s: &str, idx: usize) -> usize {
+    if idx >= s.len() {
+        return s.len();
+    }
+    let mut iter = s[idx..].char_indices();
+    let _ = iter.next();
+    match iter.next() {
+        Some((off, _)) => idx + off,
+        None => s.len(),
+    }
+}
+
+fn move_cursor_vertical(s: &str, idx: usize, dir: i32) -> usize {
+    let idx = idx.min(s.len());
+    let before = &s[..idx];
+    let line = before.as_bytes().iter().filter(|&&b| b == b'\n').count();
+    let line_starts = line_start_bytes(s);
+    if dir < 0 {
+        if line == 0 {
+            return idx;
+        }
+        let target_line = line - 1;
+        let col = col_in_line(s, idx, line_starts[line]);
+        return byte_index_for_line_col(s, &line_starts, target_line, col);
+    }
+    // down
+    if line + 1 >= line_starts.len() {
+        return idx;
+    }
+    let target_line = line + 1;
+    let col = col_in_line(s, idx, line_starts[line]);
+    byte_index_for_line_col(s, &line_starts, target_line, col)
+}
+
+fn line_start_bytes(s: &str) -> Vec<usize> {
+    let mut starts = vec![0usize];
+    for (i, b) in s.as_bytes().iter().enumerate() {
+        if *b == b'\n' {
+            starts.push(i + 1);
+        }
+    }
+    starts
+}
+
+fn col_in_line(s: &str, idx: usize, line_start: usize) -> usize {
+    s[line_start..idx].chars().count()
+}
+
+fn byte_index_for_line_col(s: &str, line_starts: &[usize], line: usize, col: usize) -> usize {
+    let start = *line_starts.get(line).unwrap_or(&0);
+    let end = if line + 1 < line_starts.len() {
+        // exclude newline
+        line_starts[line + 1].saturating_sub(1)
+    } else {
+        s.len()
+    };
+    let slice = &s[start..end.min(s.len())];
+    match slice.char_indices().nth(col) {
+        Some((off, _)) => start + off,
+        None => start + slice.len(),
+    }
+}
+
+fn ensure_prompts_cursor_visible(model: &mut Model) {
+    let w = model.prompts_viewport_width;
+    let h = model.prompts_viewport_height;
+    if w == 0 || h == 0 {
+        return;
+    }
+    let cursor_row = wrapped_row_for_prefix(&model.prompts_raw, model.prompts_cursor, w);
+    let scroll = model.prompts_scroll as usize;
+    let view_h = h as usize;
+    if cursor_row < scroll {
+        model.prompts_scroll = cursor_row.min(u16::MAX as usize) as u16;
+    } else if cursor_row >= scroll.saturating_add(view_h.saturating_sub(1)) {
+        let new_scroll = cursor_row.saturating_sub(view_h.saturating_sub(1));
+        model.prompts_scroll = new_scroll.min(u16::MAX as usize) as u16;
+    }
+}
+
+fn wrapped_row_for_prefix(s: &str, cursor: usize, width: u16) -> usize {
+    let cursor = cursor.min(s.len());
+    let prefix = &s[..cursor];
+    let wrapped = {
+        // Same wrapping behavior as view.rs (preserve newlines).
+        let mut out: Vec<String> = Vec::new();
+        for line in prefix.lines() {
+            out.extend(wrap_one_line(line, width));
+        }
+        if prefix.ends_with('\n') {
+            out.push(String::new());
+        }
+        if out.is_empty() {
+            out.push(String::new());
+        }
+        out
+    };
+    wrapped.len().saturating_sub(1)
+}
+
+fn wrap_one_line(s: &str, width: u16) -> Vec<String> {
+    let w = width as usize;
+    if w == 0 {
+        return vec![String::new()];
+    }
+    if s.is_empty() {
+        return vec![String::new()];
+    }
+    let opts = textwrap::Options::new(w).break_words(true);
+    textwrap::wrap(s, &opts)
+        .into_iter()
+        .map(|c| c.into_owned())
+        .collect()
 }
 
 fn update_modal_key(model: &mut Model, key: ratatui::crossterm::event::KeyEvent) -> Vec<Cmd> {

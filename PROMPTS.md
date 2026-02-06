@@ -1,10 +1,10 @@
 ## Prompt 1
 
-Can you give me an overview of Workplace AI? What is it? 
+Can you give me an overview of Workplace AI?
 
 ## Prompt 2
 
-Can you help me understand how to maintain Crawler?
+Can you help me with the basics of maintaining Crawler?
 
 ## Prompt 3
 

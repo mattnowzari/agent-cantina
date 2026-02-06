@@ -55,7 +55,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     };
 
     let top_title = format!(
-        "Prompts ({})  [Tab switch] [↑/↓ scroll]",
+        "Prompts ({})  [Tab switch] [Ctrl+S save] [Ctrl+R reload] [←/→/↑/↓ move]",
         model.prompts_path
     );
     let top_block = Block::default()
@@ -74,7 +74,17 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
         top_inner
     };
 
-    let prompts_wrapped = wrap_preserve_newlines(&model.prompts_raw, top_content_area.width);
+    // Record viewport dimensions for editor scroll logic.
+    model.prompts_viewport_width = top_content_area.width;
+    model.prompts_viewport_height = top_content_area.height;
+
+    let prompts_display = if model.active == ActivePanel::Top {
+        with_caret(&model.prompts_raw, model.prompts_cursor)
+    } else {
+        model.prompts_raw.clone()
+    };
+
+    let prompts_wrapped = wrap_preserve_newlines(&prompts_display, top_content_area.width);
     let prompts_lines = prompts_wrapped.len();
     let prompts_inner_h = top_content_area.height as usize;
     let prompts_max_scroll_from_top = prompts_lines.saturating_sub(prompts_inner_h);
@@ -298,6 +308,16 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     if let Some(modal) = model.modal.as_mut() {
         render_modal(frame, modal);
     }
+}
+
+fn with_caret(s: &str, cursor: usize) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    let idx = cursor.min(s.len());
+    out.push_str(&s[..idx]);
+    // Use a 1-column ASCII cursor to avoid ambiguous-width glyph spacing.
+    out.push('|');
+    out.push_str(&s[idx..]);
+    out
 }
 
 fn selected_agent_label(model: &Model) -> String {

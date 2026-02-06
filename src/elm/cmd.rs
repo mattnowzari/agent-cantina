@@ -1,6 +1,7 @@
 #[derive(Debug, Clone)]
 pub enum Cmd {
     LoadPromptsFile { path: String },
+    SavePromptsFile { path: String, raw: String },
     LoadEnv,
     LoadAgents,
     LoadTools,

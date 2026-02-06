@@ -15,6 +15,9 @@ pub struct Model {
     pub prompts_raw: String,
     pub prompts: Vec<String>,
     pub prompts_scroll: u16,
+    pub prompts_cursor: usize,
+    pub prompts_viewport_width: u16,
+    pub prompts_viewport_height: u16,
 
     pub agents_loading: bool,
     pub agents_loaded: bool,
@@ -52,6 +55,9 @@ impl Default for Model {
             prompts_raw: String::new(),
             prompts: Vec::new(),
             prompts_scroll: 0,
+            prompts_cursor: 0,
+            prompts_viewport_width: 0,
+            prompts_viewport_height: 0,
 
             agents_loading: false,
             agents_loaded: false,

@@ -133,6 +133,34 @@ fn execute_cmd(
                 }
             });
         }
+        Cmd::SavePromptsFile { path, raw } => {
+            rt.spawn(async move {
+                let res = tokio::task::spawn_blocking(move || -> anyhow::Result<crate::prompts::PromptFile> {
+                    std::fs::write(&path, &raw)?;
+                    Ok(crate::prompts::parse_prompts_markdown(raw))
+                })
+                .await;
+
+                match res {
+                    Ok(Ok(pf)) => {
+                        let _ = tx.send(Msg::PromptsSaved {
+                            raw: pf.raw,
+                            prompts: pf.prompts,
+                        });
+                    }
+                    Ok(Err(e)) => {
+                        let _ = tx.send(Msg::PromptsSaveFailed {
+                            error: e.to_string(),
+                        });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Msg::PromptsSaveFailed {
+                            error: e.to_string(),
+                        });
+                    }
+                }
+            });
+        }
         Cmd::LoadEnv => {
             rt.spawn(async move {
                 let cfg = tokio::task::spawn_blocking(crate::config::load_from_env)
