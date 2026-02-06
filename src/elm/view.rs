@@ -10,6 +10,8 @@ use ratatui::{
 };
 use textwrap::Options;
 
+use crate::theme::ElasticTheme;
+
 use super::{
     Model,
     model::{ActivePanel, ChatRole, Modal, RunState},
@@ -30,7 +32,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     .areas(area);
 
     let active_border = Style::default()
-        .fg(Color::Rgb(255, 165, 0)) // orange
+        .fg(ElasticTheme::ACCENT_SECONDARY)
         .add_modifier(Modifier::BOLD);
     let inactive_border = Style::default();
 
@@ -150,7 +152,9 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
                     if !desc.is_empty() {
                         lines.push(Line::from(Span::styled(
                             desc.to_string(),
-                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                            Style::default()
+                                .fg(ElasticTheme::SUBTLE)
+                                .add_modifier(Modifier::ITALIC),
                         )));
                     }
                 }
@@ -162,7 +166,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
             .highlight_style(
                 Style::default()
                     .fg(Color::Black)
-                    .bg(Color::Yellow)
+                    .bg(ElasticTheme::WARNING)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ ");
@@ -186,10 +190,10 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
                 .viewport_content_length(agents_content_area.height as usize);
 
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(ElasticTheme::SUBTLE))
                 .thumb_style(
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(ElasticTheme::SUBTLE)
                         .add_modifier(Modifier::BOLD),
                 );
 
@@ -198,16 +202,17 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     }
 
     // Build wrapped conversation lines based on the actual render width.
-    let run_hint = match model.run_state {
-        RunState::Idle => "[r run] ",
-        RunState::Running => "[running] ",
-        RunState::Done => "[r run again] ",
-        RunState::Error => "[r retry] ",
+    let (run_hint, run_hint_style) = match model.run_state {
+        RunState::Idle => ("[r run] ", Style::default().fg(ElasticTheme::PRIMARY)),
+        RunState::Running => ("[running] ", Style::default().fg(ElasticTheme::WARNING)),
+        RunState::Done => ("[r run again] ", Style::default().fg(ElasticTheme::SUCCESS)),
+        RunState::Error => ("[r retry] ", Style::default().fg(ElasticTheme::DANGER)),
     };
-    let bottom_title = format!(
-        "Conversation  {}[q quit] [↑/↓ scroll] [End bottom]",
-        run_hint
-    );
+    let bottom_title = Line::from(vec![
+        Span::raw("Conversation  "),
+        Span::styled(run_hint, run_hint_style.add_modifier(Modifier::BOLD)),
+        Span::raw("[q quit] [↑/↓ scroll] [End bottom]"),
+    ]);
     let bottom_block = Block::default()
         .title(bottom_title)
         .borders(Borders::ALL)
@@ -252,10 +257,10 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
             .viewport_content_length(top_content_area.height as usize);
 
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(ElasticTheme::SUBTLE))
             .thumb_style(
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(ElasticTheme::SUBTLE)
                     .add_modifier(Modifier::BOLD),
             );
 
@@ -278,10 +283,10 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
             .viewport_content_length(content_area.height as usize);
 
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(ElasticTheme::SUBTLE))
             .thumb_style(
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(ElasticTheme::SUBTLE)
                     .add_modifier(Modifier::BOLD),
             );
 
@@ -311,11 +316,11 @@ fn chat_lines_wrapped(model: &Model, width: u16) -> Vec<Line<'static>> {
             ChatRole::System => (
                 "[system]",
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(ElasticTheme::SUBTLE)
                     .add_modifier(Modifier::ITALIC),
             ),
-            ChatRole::User => ("[you]", Style::default().fg(Color::Cyan)),
-            ChatRole::Agent => ("[agent]", Style::default().fg(Color::Green)),
+            ChatRole::User => ("[you]", Style::default().fg(ElasticTheme::ACCENT)),
+            ChatRole::Agent => ("[agent]", Style::default().fg(ElasticTheme::ACCENT_SECONDARY)),
         };
         let is_user = entry.role == ChatRole::User;
 
@@ -341,7 +346,7 @@ fn chat_lines_wrapped(model: &Model, width: u16) -> Vec<Line<'static>> {
     if model.waiting_for_response {
         let spinner = spinner_char(model.spinner_frame);
         let style = Style::default()
-            .fg(Color::Yellow)
+            .fg(ElasticTheme::WARNING)
             .add_modifier(Modifier::ITALIC);
         out.push(
             Line::from(vec![Span::styled(
@@ -414,17 +419,21 @@ fn render_modal(frame: &mut Frame, modal: &Modal) {
                 "Set these env vars and restart:\n\n{}\n\nPress Enter/Esc to dismiss.",
                 missing.join(", ")
             ),
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ElasticTheme::DANGER)
+                .add_modifier(Modifier::BOLD),
         ),
         Modal::Info { title, message } => (
             title.as_str(),
             format!("{message}\n\nPress Enter/Esc to dismiss."),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(ElasticTheme::PRIMARY),
         ),
         Modal::Error { title, message } => (
             title.as_str(),
             format!("{message}\n\nPress Enter/Esc to dismiss."),
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ElasticTheme::DANGER)
+                .add_modifier(Modifier::BOLD),
         ),
     };
 
