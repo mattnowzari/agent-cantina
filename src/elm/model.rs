@@ -101,6 +101,37 @@ pub enum Modal {
     MissingEnv { missing: Vec<&'static str> },
     Info { title: String, message: String },
     Error { title: String, message: String },
+    CreateAgent(CreateAgentModal),
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateAgentModal {
+    pub name: String,
+    pub description: String,
+    pub instructions: String,
+    pub focus: CreateAgentField,
+    pub submitting: bool,
+    pub error: Option<String>,
+}
+
+impl Default for CreateAgentModal {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            description: String::new(),
+            instructions: String::new(),
+            focus: CreateAgentField::Name,
+            submitting: false,
+            error: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreateAgentField {
+    Name,
+    Description,
+    Instructions,
 }
 
 #[derive(Debug, Clone)]

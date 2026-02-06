@@ -4,4 +4,10 @@ pub enum Cmd {
     LoadEnv,
     LoadAgents,
     StartRun,
+    CreateAgent {
+        id: String,
+        name: String,
+        description: String,
+        instructions: String,
+    },
 }

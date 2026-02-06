@@ -4,6 +4,21 @@ use ratatui::DefaultTerminal;
 use crate::elm::{Cmd, Model, Msg};
 
 pub fn run() -> Result<()> {
+    // When running a TUI in raw mode, panic output can be invisible (or leave the
+    // terminal in a bad state). Restore the terminal and print the panic + backtrace.
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = ratatui::crossterm::execute!(
+            std::io::stdout(),
+            ratatui::crossterm::event::DisableMouseCapture
+        );
+        ratatui::restore();
+
+        let bt = std::backtrace::Backtrace::capture();
+        eprintln!("\n\nAgent Cantina panicked: {info}\n\nBacktrace:\n{bt}\n");
+        prev_hook(info);
+    }));
+
     let terminal = ratatui::init();
     // Ensure mouse-wheel events (scrolling) work.
     ratatui::crossterm::execute!(
@@ -71,10 +86,7 @@ fn read_msg() -> Result<Option<Msg>> {
 
     match event::read()? {
         Event::Key(key) => {
-            if matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q')) {
-                Ok(Some(Msg::Quit))
-            } else if key.code == KeyCode::Char('c')
-                && key.modifiers.contains(event::KeyModifiers::CONTROL)
+            if key.code == KeyCode::Char('c') && key.modifiers.contains(event::KeyModifiers::CONTROL)
             {
                 Ok(Some(Msg::Quit))
             } else {
@@ -228,6 +240,63 @@ fn execute_cmd(
                 }
 
                 let _ = tx.send(Msg::RunFinished);
+            });
+        }
+        Cmd::CreateAgent {
+            id,
+            name,
+            description,
+            instructions,
+        } => {
+            let cfg = model.config.clone();
+            rt.spawn(async move {
+                if !cfg.is_ready() {
+                    let _ = tx.send(Msg::AgentCreateFailed {
+                        error: "Missing KIBANA_URL/ES_HOST and/or API_KEY/ES_API_KEY.".to_string(),
+                    });
+                    return;
+                }
+                let client = match crate::elastic::AgentBuilderClient::new(&cfg) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = tx.send(Msg::AgentCreateFailed {
+                            error: e.to_string(),
+                        });
+                        return;
+                    }
+                };
+
+                let req = crate::elastic::CreateAgentRequest {
+                    id,
+                    name,
+                    description,
+                    configuration: crate::elastic::CreateAgentConfiguration {
+                        instructions: Some(instructions),
+                        tools: vec![crate::elastic::CreateAgentTools {
+                            tool_ids: vec![
+                                "platform.core.search".to_string(),
+                                "platform.core.list_indices".to_string(),
+                                "platform.core.get_index_mapping".to_string(),
+                                "platform.core.get_document_by_id".to_string(),
+                            ],
+                        }],
+                    },
+                    // Keep avatar minimal; users can edit later in Kibana.
+                    avatar_color: None,
+                    avatar_symbol: None,
+                    labels: vec![],
+                };
+
+                match client.create_agent(req).await {
+                    Ok(agent) => {
+                        let _ = tx.send(Msg::AgentCreated { agent });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Msg::AgentCreateFailed {
+                            error: e.to_string(),
+                        });
+                    }
+                }
             });
         }
     }

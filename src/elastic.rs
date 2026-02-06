@@ -125,6 +125,39 @@ impl AgentBuilderClient {
             None => format!("{}/api/agent_builder/agents", self.base_url),
         }
     }
+
+    pub async fn create_agent(&self, req: CreateAgentRequest) -> Result<AgentSummary> {
+        let url = self.create_agent_url();
+        let resp = self
+            .http
+            .post(url)
+            .json(&req)
+            .send()
+            .await
+            .context("failed to send request")?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("Agent Builder API error {}: {}", status, text);
+        }
+
+        let parsed: CreateAgentResponse =
+            serde_json::from_str(&text).context("failed to parse create agent response JSON")?;
+
+        Ok(AgentSummary {
+            id: parsed.id,
+            name: parsed.name,
+            description: Some(parsed.description),
+        })
+    }
+
+    fn create_agent_url(&self) -> String {
+        match self.space.as_deref() {
+            Some(space) => format!("{}/s/{}/api/agent_builder/agents", self.base_url, space),
+            None => format!("{}/api/agent_builder/agents", self.base_url),
+        }
+    }
 }
 
 fn normalize_base_url(raw: &str) -> String {
@@ -244,4 +277,41 @@ pub struct ConverseResult {
     pub message: String,
     #[allow(dead_code)]
     pub steps: Vec<ConverseStep>,
+}
+
+/// `POST /api/agent_builder/agents`
+///
+/// Docs:
+/// - `https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-agent-builder-agents`
+#[derive(Debug, Serialize)]
+pub struct CreateAgentRequest {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub configuration: CreateAgentConfiguration,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_symbol: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub labels: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateAgentConfiguration {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    pub tools: Vec<CreateAgentTools>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateAgentTools {
+    pub tool_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateAgentResponse {
+    id: String,
+    name: String,
+    description: String,
 }

@@ -1,19 +1,22 @@
-use ratatui::crossterm::event::{KeyCode, MouseEventKind};
+use ratatui::crossterm::event::{KeyCode, KeyModifiers, MouseEventKind};
 
-use super::{Cmd, Model, Msg, model::ActivePanel};
+use super::{
+    Cmd, Model, Msg,
+    model::{ActivePanel, CreateAgentField, CreateAgentModal, Modal},
+};
 
 pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
-    // When a modal is open, only allow dismiss + quit.
+    // When a modal is open, keyboard input goes to the modal, but we still
+    // allow background messages (e.g. AgentCreated) to be processed.
     if model.modal.is_some() {
         match msg {
-            Msg::Quit => model.should_quit = true,
-            Msg::Key(key) => match key.code {
-                KeyCode::Enter | KeyCode::Esc => model.modal = None,
-                _ => {}
-            },
+            Msg::Quit => {
+                model.should_quit = true;
+                return vec![];
+            }
+            Msg::Key(key) => return update_modal_key(model, key),
             _ => {}
         }
-        return vec![];
     }
 
     match msg {
@@ -34,6 +37,9 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                 // Panel selection
                 KeyCode::Tab => cycle_panel(model, CycleDir::Forward),
                 KeyCode::BackTab => cycle_panel(model, CycleDir::Backward),
+                KeyCode::Esc => {
+                    model.should_quit = true;
+                }
 
                 // Scrolling
                 KeyCode::Up | KeyCode::Char('k') => scroll_or_select(model, ScrollDir::Up, 3),
@@ -87,6 +93,22 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                     model.selected_agent_id = None;
                     model.agents_list_state = ratatui::widgets::ListState::default();
                     return maybe_load_agents(model);
+                }
+
+                // Create a new agent
+                KeyCode::Char('n') => {
+                    if model.active == ActivePanel::Agents {
+                        if !model.config.is_ready() {
+                            model.modal = Some(Modal::Info {
+                                title: "Missing env".to_string(),
+                                message:
+                                    "Set KIBANA_URL/ES_HOST and API_KEY/ES_API_KEY before creating an agent."
+                                        .to_string(),
+                            });
+                            return vec![];
+                        }
+                        model.modal = Some(Modal::CreateAgent(CreateAgentModal::default()));
+                    }
                 }
 
                 // Re-run prompts
@@ -240,6 +262,47 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             vec![]
         }
 
+        Msg::AgentCreated { agent } => {
+            model.chat.push(super::model::ChatEntry::system(format!(
+                "Created agent: {} ({})",
+                agent.name, agent.id
+            )));
+            // Close the create-agent modal if it was open.
+            if matches!(model.modal, Some(Modal::CreateAgent(_))) {
+                model.modal = None;
+            }
+            model.selected_agent_id = Some(agent.id.clone());
+            model.config.agent_id = agent.id.clone();
+
+            // Reload list so it shows up immediately.
+            model.agents_loaded = false;
+            model.agents_loading = false;
+            model.agents_error = None;
+            model.agents.clear();
+            model.agent_selected_index = 0;
+            model.agents_list_state = ratatui::widgets::ListState::default();
+            model.active = ActivePanel::Agents;
+            vec![Cmd::LoadAgents]
+        }
+
+        Msg::AgentCreateFailed { error } => {
+            model.chat.push(super::model::ChatEntry::system(format!(
+                "Create agent failed: {}",
+                error
+            )));
+            // If the create-agent modal is open, show the error inline there.
+            if let Some(Modal::CreateAgent(state)) = model.modal.as_mut() {
+                state.submitting = false;
+                state.error = Some(error);
+            } else {
+                model.modal = Some(Modal::Error {
+                    title: "Failed to create agent".to_string(),
+                    message: error,
+                });
+            }
+            vec![]
+        }
+
         Msg::AppendChat(entry) => {
             model.chat.push(entry);
             vec![]
@@ -292,6 +355,163 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         }
 
     }
+}
+
+fn update_modal_key(model: &mut Model, key: ratatui::crossterm::event::KeyEvent) -> Vec<Cmd> {
+    let Some(modal) = model.modal.as_mut() else {
+        return vec![];
+    };
+
+    match modal {
+        Modal::MissingEnv { .. } | Modal::Info { .. } | Modal::Error { .. } => {
+            if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+                model.modal = None;
+            }
+            vec![]
+        }
+        Modal::CreateAgent(state) => {
+            let (close, cmds) = update_create_agent_modal(state, key);
+            if close {
+                model.modal = None;
+            }
+            cmds
+        }
+    }
+}
+
+fn update_create_agent_modal(
+    state: &mut CreateAgentModal,
+    key: ratatui::crossterm::event::KeyEvent,
+) -> (bool, Vec<Cmd>) {
+    if key.code == KeyCode::Esc {
+        return (true, vec![]);
+    }
+
+    if state.submitting {
+        // While submitting, only allow cancel.
+        return (false, vec![]);
+    }
+
+    // Submit (avoid relying only on Ctrl+S, which can be flow-control in some terminals).
+    let submit = (key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('s'))
+        || key.code == KeyCode::F(2);
+    if submit {
+        state.error = None;
+        let name = state.name.trim().to_string();
+        let description = state.description.trim().to_string();
+        let instructions = state.instructions.trim().to_string();
+
+        if name.is_empty() {
+            state.error = Some("Name is required.".to_string());
+            state.focus = CreateAgentField::Name;
+            return (false, vec![]);
+        }
+        if instructions.is_empty() {
+            state.error = Some("Instructions/prompt is required.".to_string());
+            state.focus = CreateAgentField::Instructions;
+            return (false, vec![]);
+        }
+
+        let id = generate_agent_id(&name);
+        let description = if description.is_empty() {
+            format!("Custom agent created in Agent Cantina: {name}")
+        } else {
+            description
+        };
+
+        state.submitting = true;
+        return (
+            false,
+            vec![Cmd::CreateAgent {
+                id,
+                name,
+                description,
+                instructions,
+            }],
+        );
+    }
+
+    match key.code {
+        KeyCode::Tab => {
+            state.focus = match state.focus {
+                CreateAgentField::Name => CreateAgentField::Description,
+                CreateAgentField::Description => CreateAgentField::Instructions,
+                CreateAgentField::Instructions => CreateAgentField::Name,
+            };
+        }
+        KeyCode::BackTab => {
+            state.focus = match state.focus {
+                CreateAgentField::Name => CreateAgentField::Instructions,
+                CreateAgentField::Description => CreateAgentField::Name,
+                CreateAgentField::Instructions => CreateAgentField::Description,
+            };
+        }
+        KeyCode::Enter => {
+            if state.focus == CreateAgentField::Instructions {
+                state.instructions.push('\n');
+            } else {
+                state.focus = match state.focus {
+                    CreateAgentField::Name => CreateAgentField::Description,
+                    CreateAgentField::Description => CreateAgentField::Instructions,
+                    CreateAgentField::Instructions => CreateAgentField::Instructions,
+                };
+            }
+        }
+        KeyCode::Backspace => match state.focus {
+            CreateAgentField::Name => {
+                state.name.pop();
+            }
+            CreateAgentField::Description => {
+                state.description.pop();
+            }
+            CreateAgentField::Instructions => {
+                state.instructions.pop();
+            }
+        },
+        KeyCode::Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL)
+                || key.modifiers.contains(KeyModifiers::ALT)
+            {
+                return (false, vec![]);
+            }
+            match state.focus {
+                CreateAgentField::Name => state.name.push(c),
+                CreateAgentField::Description => state.description.push(c),
+                CreateAgentField::Instructions => state.instructions.push(c),
+            }
+        }
+        _ => {}
+    }
+
+    (false, vec![])
+}
+
+fn generate_agent_id(name: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in name.trim().chars() {
+        let c = ch.to_ascii_lowercase();
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+            last_dash = false;
+        } else if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+        if out.len() >= 48 {
+            break;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    if out.is_empty() {
+        out.push_str("agent");
+    }
+
+    // Add a small suffix to reduce collisions.
+    let suffix = chrono::Local::now().format("%H%M%S").to_string();
+    format!("{out}-{suffix}")
 }
 
 #[derive(Debug, Clone, Copy)]

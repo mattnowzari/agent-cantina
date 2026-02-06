@@ -14,7 +14,7 @@ use crate::theme::ElasticTheme;
 
 use super::{
     Model,
-    model::{ActivePanel, ChatRole, Modal, RunState},
+    model::{ActivePanel, ChatRole, CreateAgentField, CreateAgentModal, Modal, RunState},
 };
 
 pub fn view(frame: &mut Frame, model: &mut Model) {
@@ -90,7 +90,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     // Agents window
     let selected_agent_label = selected_agent_label(model);
     let agents_title = format!(
-        "Agents  [Tab switch] [↑/↓ select] [Enter choose+run] [g reload]  selected: {}",
+        "Agents  [Tab switch] [↑/↓ select] [Enter choose+run] [n new] [g reload]  selected: {}",
         selected_agent_label
     );
     let agents_block = Block::default()
@@ -211,7 +211,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     let bottom_title = Line::from(vec![
         Span::raw("Conversation  "),
         Span::styled(run_hint, run_hint_style.add_modifier(Modifier::BOLD)),
-        Span::raw("[q quit] [↑/↓ scroll] [End bottom]"),
+        Span::raw("[Esc quit] [↑/↓ scroll] [End bottom]"),
     ]);
     let bottom_block = Block::default()
         .title(bottom_title)
@@ -412,40 +412,175 @@ fn render_modal(frame: &mut Frame, modal: &Modal) {
         height: h.max(8),
     };
 
-    let (title, message, border_style) = match modal {
-        Modal::MissingEnv { missing } => (
-            "Missing env vars",
-            format!(
+    frame.render_widget(Clear, rect);
+    match modal {
+        Modal::CreateAgent(state) => render_create_agent_modal(frame, rect, state),
+        Modal::MissingEnv { missing } => {
+            let title = "Missing env vars";
+            let message = format!(
                 "Set these env vars and restart:\n\n{}\n\nPress Enter/Esc to dismiss.",
                 missing.join(", ")
-            ),
-            Style::default()
+            );
+            let border_style = Style::default()
                 .fg(ElasticTheme::DANGER)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Modal::Info { title, message } => (
-            title.as_str(),
-            format!("{message}\n\nPress Enter/Esc to dismiss."),
-            Style::default().fg(ElasticTheme::PRIMARY),
-        ),
-        Modal::Error { title, message } => (
-            title.as_str(),
-            format!("{message}\n\nPress Enter/Esc to dismiss."),
-            Style::default()
+                .add_modifier(Modifier::BOLD);
+
+            let widget = Paragraph::new(message)
+                .block(
+                    Block::default()
+                        .title(title)
+                        .borders(Borders::ALL)
+                        .border_style(border_style),
+                )
+                .wrap(Wrap { trim: false });
+
+            frame.render_widget(widget, rect);
+        }
+        Modal::Info { title, message } => {
+            let message = format!("{message}\n\nPress Enter/Esc to dismiss.");
+            let border_style = Style::default().fg(ElasticTheme::PRIMARY);
+
+            let widget = Paragraph::new(message)
+                .block(
+                    Block::default()
+                        .title(title.as_str())
+                        .borders(Borders::ALL)
+                        .border_style(border_style),
+                )
+                .wrap(Wrap { trim: false });
+
+            frame.render_widget(widget, rect);
+        }
+        Modal::Error { title, message } => {
+            let message = format!("{message}\n\nPress Enter/Esc to dismiss.");
+            let border_style = Style::default()
                 .fg(ElasticTheme::DANGER)
-                .add_modifier(Modifier::BOLD),
-        ),
+                .add_modifier(Modifier::BOLD);
+
+            let widget = Paragraph::new(message)
+                .block(
+                    Block::default()
+                        .title(title.as_str())
+                        .borders(Borders::ALL)
+                        .border_style(border_style),
+                )
+                .wrap(Wrap { trim: false });
+
+            frame.render_widget(widget, rect);
+        }
+    }
+}
+
+fn render_create_agent_modal(frame: &mut Frame, rect: ratatui::layout::Rect, state: &CreateAgentModal) {
+    let block = Block::default()
+        .title("Create agent")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(ElasticTheme::ACCENT_SECONDARY).add_modifier(Modifier::BOLD));
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+
+    let [name_area, desc_area, prompt_area, help_area] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Fill(1),
+        Constraint::Length(3),
+    ])
+    .areas(inner);
+
+    let focused = Style::default()
+        .fg(ElasticTheme::ACCENT)
+        .add_modifier(Modifier::BOLD);
+    let normal = Style::default().fg(ElasticTheme::SUBTLE);
+
+    let name_border = if state.focus == CreateAgentField::Name { focused } else { normal };
+    let desc_border =
+        if state.focus == CreateAgentField::Description { focused } else { normal };
+    let prompt_border =
+        if state.focus == CreateAgentField::Instructions { focused } else { normal };
+
+    let name_text = if state.focus == CreateAgentField::Name {
+        format!("{}▍", state.name)
+    } else {
+        state.name.clone()
+    };
+    let desc_text = if state.focus == CreateAgentField::Description {
+        format!("{}▍", state.description)
+    } else {
+        state.description.clone()
+    };
+    let prompt_text = if state.focus == CreateAgentField::Instructions {
+        format!("{}▍", state.instructions)
+    } else {
+        state.instructions.clone()
     };
 
-    frame.render_widget(Clear, rect);
-    let widget = Paragraph::new(message)
+    let name_widget = Paragraph::new(name_text)
+        .block(Block::default().title("Name").borders(Borders::ALL).border_style(name_border))
+        .wrap(Wrap { trim: false });
+    let desc_widget = Paragraph::new(desc_text)
         .block(
             Block::default()
-                .title(title)
+                .title("Description (optional)")
                 .borders(Borders::ALL)
-                .border_style(border_style),
+                .border_style(desc_border),
         )
         .wrap(Wrap { trim: false });
 
-    frame.render_widget(widget, rect);
+    // Keep the prompt view "bottom-aligned" as it grows.
+    let wrapped = wrap_preserve_newlines(&prompt_text, prompt_area.width.saturating_sub(2));
+    let total_lines = wrapped.len();
+    let viewport_h = prompt_area.height.saturating_sub(2) as usize;
+    let scroll_from_top = total_lines.saturating_sub(viewport_h) as u16;
+    let prompt_widget = Paragraph::new(Text::from(
+        wrapped
+            .into_iter()
+            .map(Line::from)
+            .collect::<Vec<Line<'static>>>(),
+    ))
+    .scroll((scroll_from_top, 0))
+    .block(
+        Block::default()
+            .title("Instructions / prompt")
+            .borders(Borders::ALL)
+            .border_style(prompt_border),
+    )
+    .wrap(Wrap { trim: false });
+
+    let mut help_lines: Vec<Line> = vec![Line::from(vec![
+        Span::styled("[Tab]", Style::default().fg(ElasticTheme::PRIMARY).add_modifier(Modifier::BOLD)),
+        Span::raw(" next  "),
+        Span::styled("[Enter]", Style::default().fg(ElasticTheme::PRIMARY).add_modifier(Modifier::BOLD)),
+        Span::raw(" newline in prompt  "),
+        Span::styled("[F2]", Style::default().fg(ElasticTheme::SUCCESS).add_modifier(Modifier::BOLD)),
+        Span::raw(" create  "),
+        Span::styled("[Ctrl+S]", Style::default().fg(ElasticTheme::SUBTLE).add_modifier(Modifier::BOLD)),
+        Span::raw(" create (alt)  "),
+        Span::styled("[Esc]", Style::default().fg(ElasticTheme::DANGER).add_modifier(Modifier::BOLD)),
+        Span::raw(" cancel"),
+    ])];
+
+    if state.submitting {
+        help_lines.push(Line::from(vec![
+            Span::styled("Creating…", Style::default().fg(ElasticTheme::WARNING).add_modifier(Modifier::ITALIC)),
+        ]));
+    } else if let Some(err) = &state.error {
+        help_lines.push(Line::from(vec![Span::styled(
+            err.clone(),
+            Style::default().fg(ElasticTheme::DANGER).add_modifier(Modifier::BOLD),
+        )]));
+    } else {
+        help_lines.push(Line::from(vec![Span::styled(
+            "Tools: default core search suite",
+            Style::default().fg(ElasticTheme::SUBTLE).add_modifier(Modifier::ITALIC),
+        )]));
+    }
+
+    let help_widget = Paragraph::new(Text::from(help_lines))
+        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(ElasticTheme::SUBTLE)))
+        .wrap(Wrap { trim: false });
+
+    frame.render_widget(name_widget, name_area);
+    frame.render_widget(desc_widget, desc_area);
+    frame.render_widget(prompt_widget, prompt_area);
+    frame.render_widget(help_widget, help_area);
 }
