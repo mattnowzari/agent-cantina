@@ -11,6 +11,19 @@ pub struct AgentSummary {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ToolSummary {
+    pub id: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(rename = "type", default)]
+    pub tool_type: String,
+    #[serde(default)]
+    pub readonly: bool,
+    #[serde(default)]
+    pub description: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct AgentBuilderClient {
     base_url: String,
@@ -123,6 +136,33 @@ impl AgentBuilderClient {
         match self.space.as_deref() {
             Some(space) => format!("{}/s/{}/api/agent_builder/agents", self.base_url, space),
             None => format!("{}/api/agent_builder/agents", self.base_url),
+        }
+    }
+
+    pub async fn list_tools(&self) -> Result<Vec<ToolSummary>> {
+        let url = self.list_tools_url();
+        let resp = self
+            .http
+            .get(url)
+            .send()
+            .await
+            .context("failed to send request")?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("Agent Builder API error {}: {}", status, text);
+        }
+
+        let parsed: ListToolsResponse =
+            serde_json::from_str(&text).context("failed to parse list tools response JSON")?;
+        Ok(parsed.results)
+    }
+
+    fn list_tools_url(&self) -> String {
+        match self.space.as_deref() {
+            Some(space) => format!("{}/s/{}/api/agent_builder/tools", self.base_url, space),
+            None => format!("{}/api/agent_builder/tools", self.base_url),
         }
     }
 
@@ -277,6 +317,12 @@ pub struct ConverseResult {
     pub message: String,
     #[allow(dead_code)]
     pub steps: Vec<ConverseStep>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListToolsResponse {
+    #[serde(default)]
+    results: Vec<ToolSummary>,
 }
 
 /// `POST /api/agent_builder/agents`

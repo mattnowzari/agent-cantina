@@ -4,7 +4,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{
-        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar,
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, Tabs,
         ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
@@ -14,7 +14,9 @@ use crate::theme::ElasticTheme;
 
 use super::{
     Model,
-    model::{ActivePanel, ChatRole, CreateAgentField, CreateAgentModal, Modal, RunState},
+    model::{
+        ActivePanel, ChatRole, CreateAgentField, CreateAgentModal, CreateAgentTab, Modal, RunState,
+    },
 };
 
 pub fn view(frame: &mut Frame, model: &mut Model) {
@@ -293,7 +295,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
         frame.render_stateful_widget(scrollbar, sb_area, &mut state);
     }
 
-    if let Some(modal) = &model.modal {
+    if let Some(modal) = model.modal.as_mut() {
         render_modal(frame, modal);
     }
 }
@@ -397,7 +399,7 @@ fn spinner_char(frame: usize) -> &'static str {
     FRAMES[frame % FRAMES.len()]
 }
 
-fn render_modal(frame: &mut Frame, modal: &Modal) {
+fn render_modal(frame: &mut Frame, modal: &mut Modal) {
     use ratatui::layout::Rect;
 
     let area = frame.area();
@@ -471,7 +473,11 @@ fn render_modal(frame: &mut Frame, modal: &Modal) {
     }
 }
 
-fn render_create_agent_modal(frame: &mut Frame, rect: ratatui::layout::Rect, state: &CreateAgentModal) {
+fn render_create_agent_modal(
+    frame: &mut Frame,
+    rect: ratatui::layout::Rect,
+    state: &mut CreateAgentModal,
+) {
     let block = Block::default()
         .title("Create agent")
         .borders(Borders::ALL)
@@ -479,13 +485,32 @@ fn render_create_agent_modal(frame: &mut Frame, rect: ratatui::layout::Rect, sta
     let inner = block.inner(rect);
     frame.render_widget(block, rect);
 
-    let [name_area, desc_area, prompt_area, help_area] = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Length(3),
+    let [tabs_area, content_area, help_area] = Layout::vertical([
+        Constraint::Length(1),
         Constraint::Fill(1),
         Constraint::Length(3),
     ])
     .areas(inner);
+
+    let tabs = Tabs::new(vec![
+        Line::from("Prompt"),
+        Line::from(format!("Tools ({})", state.selected_tool_ids.len())),
+    ])
+    .select(match state.tab {
+        CreateAgentTab::Prompt => 0,
+        CreateAgentTab::Tools => 1,
+    })
+    .style(Style::default().fg(ElasticTheme::SUBTLE))
+    .highlight_style(Style::default().fg(ElasticTheme::ACCENT).add_modifier(Modifier::BOLD))
+    .divider(" | ");
+    frame.render_widget(tabs, tabs_area);
+
+    let [name_area, desc_area, prompt_area] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Fill(1),
+    ])
+    .areas(content_area);
 
     let focused = Style::default()
         .fg(ElasticTheme::ACCENT)
@@ -526,7 +551,7 @@ fn render_create_agent_modal(frame: &mut Frame, rect: ratatui::layout::Rect, sta
         )
         .wrap(Wrap { trim: false });
 
-    // Keep the prompt view "bottom-aligned" as it grows.
+    // Prompt widget (bottom-aligned as it grows).
     let wrapped = wrap_preserve_newlines(&prompt_text, prompt_area.width.saturating_sub(2));
     let total_lines = wrapped.len();
     let viewport_h = prompt_area.height.saturating_sub(2) as usize;
@@ -546,15 +571,19 @@ fn render_create_agent_modal(frame: &mut Frame, rect: ratatui::layout::Rect, sta
     )
     .wrap(Wrap { trim: false });
 
+    // Tools tab content
+    let tools_border = if state.tab == CreateAgentTab::Tools { focused } else { normal };
+    let tools_area = content_area;
+
     let mut help_lines: Vec<Line> = vec![Line::from(vec![
+        Span::styled("[←/→]", Style::default().fg(ElasticTheme::PRIMARY).add_modifier(Modifier::BOLD)),
+        Span::raw(" switch tab  "),
         Span::styled("[Tab]", Style::default().fg(ElasticTheme::PRIMARY).add_modifier(Modifier::BOLD)),
-        Span::raw(" next  "),
+        Span::raw(" next field  "),
         Span::styled("[Enter]", Style::default().fg(ElasticTheme::PRIMARY).add_modifier(Modifier::BOLD)),
-        Span::raw(" newline in prompt  "),
-        Span::styled("[F2]", Style::default().fg(ElasticTheme::SUCCESS).add_modifier(Modifier::BOLD)),
+        Span::raw(" newline (prompt) / toggle (tools)  "),
+        Span::styled("[Ctrl+S]", Style::default().fg(ElasticTheme::SUCCESS).add_modifier(Modifier::BOLD)),
         Span::raw(" create  "),
-        Span::styled("[Ctrl+S]", Style::default().fg(ElasticTheme::SUBTLE).add_modifier(Modifier::BOLD)),
-        Span::raw(" create (alt)  "),
         Span::styled("[Esc]", Style::default().fg(ElasticTheme::DANGER).add_modifier(Modifier::BOLD)),
         Span::raw(" cancel"),
     ])];
@@ -570,7 +599,7 @@ fn render_create_agent_modal(frame: &mut Frame, rect: ratatui::layout::Rect, sta
         )]));
     } else {
         help_lines.push(Line::from(vec![Span::styled(
-            "Tools: default core search suite",
+            "Tools tab: ↑/↓ + Space to toggle, A=all, X=none",
             Style::default().fg(ElasticTheme::SUBTLE).add_modifier(Modifier::ITALIC),
         )]));
     }
@@ -579,8 +608,83 @@ fn render_create_agent_modal(frame: &mut Frame, rect: ratatui::layout::Rect, sta
         .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(ElasticTheme::SUBTLE)))
         .wrap(Wrap { trim: false });
 
-    frame.render_widget(name_widget, name_area);
-    frame.render_widget(desc_widget, desc_area);
-    frame.render_widget(prompt_widget, prompt_area);
+    if state.tab == CreateAgentTab::Prompt {
+        frame.render_widget(name_widget, name_area);
+        frame.render_widget(desc_widget, desc_area);
+        frame.render_widget(prompt_widget, prompt_area);
+    } else {
+        // Tools list fills the content area when on Tools tab.
+        let block = Block::default()
+            .title("Tools (Space toggle, A all, X none)")
+            .borders(Borders::ALL)
+            .border_style(tools_border);
+        let inner = block.inner(tools_area);
+        frame.render_widget(block, tools_area);
+
+        if state.tools_loading {
+            let w = Paragraph::new("Loading tools…")
+                .wrap(Wrap { trim: false });
+            frame.render_widget(w, inner);
+        } else if let Some(err) = &state.tools_error {
+            let w = Paragraph::new(format!("Failed to load tools:\n\n{err}"))
+                .wrap(Wrap { trim: false });
+            frame.render_widget(w, inner);
+        } else if state.tools.is_empty() {
+            let w = Paragraph::new("No tools returned by Agent Builder.")
+                .wrap(Wrap { trim: false });
+            frame.render_widget(w, inner);
+        } else {
+            let items: Vec<ListItem> = state
+                .tools
+                .iter()
+                .map(|t| {
+                    let checked = state.selected_tool_ids.iter().any(|id| id == &t.id);
+                    let head = format!("{} {}", if checked { "[x]" } else { "[ ]" }, t.id);
+                    let mut lines = vec![Line::from(head)];
+
+                    // Render metadata so ToolSummary fields are actually used.
+                    let mut meta_bits: Vec<String> = Vec::new();
+                    if !t.tool_type.trim().is_empty() {
+                        meta_bits.push(t.tool_type.trim().to_string());
+                    }
+                    if t.readonly {
+                        meta_bits.push("readonly".to_string());
+                    }
+                    if !t.tags.is_empty() {
+                        meta_bits.push(format!("tags: {}", t.tags.join(", ")));
+                    }
+                    if !meta_bits.is_empty() {
+                        lines.push(Line::from(Span::styled(
+                            meta_bits.join(" • "),
+                            Style::default()
+                                .fg(ElasticTheme::SUBTLE)
+                                .add_modifier(Modifier::ITALIC),
+                        )));
+                    }
+
+                    if !t.description.trim().is_empty() {
+                        lines.push(Line::from(Span::styled(
+                            t.description.trim().to_string(),
+                            Style::default()
+                                .fg(ElasticTheme::SUBTLE)
+                                .add_modifier(Modifier::ITALIC),
+                        )));
+                    }
+                    ListItem::new(lines)
+                })
+                .collect();
+
+            let list = List::new(items)
+                .highlight_style(
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(ElasticTheme::WARNING)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .highlight_symbol("▶ ");
+
+            frame.render_stateful_widget(list, inner, &mut state.tools_list_state);
+        }
+    }
     frame.render_widget(help_widget, help_area);
 }

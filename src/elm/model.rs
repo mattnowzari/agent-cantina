@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::elastic::AgentSummary;
+use crate::elastic::ToolSummary;
 use ratatui::widgets::ListState;
 
 #[derive(Debug)]
@@ -110,21 +111,52 @@ pub struct CreateAgentModal {
     pub description: String,
     pub instructions: String,
     pub focus: CreateAgentField,
+    pub tab: CreateAgentTab,
+
+    pub tools_loading: bool,
+    pub tools_error: Option<String>,
+    pub tools: Vec<ToolSummary>,
+    pub tools_selected_index: usize,
+    pub tools_list_state: ListState,
+    pub selected_tool_ids: Vec<String>,
+
     pub submitting: bool,
     pub error: Option<String>,
 }
 
 impl Default for CreateAgentModal {
     fn default() -> Self {
+        // Default tool set (matches the initial hardcoded list we used).
+        let selected_tool_ids = vec![
+            "platform.core.search".to_string(),
+            "platform.core.list_indices".to_string(),
+            "platform.core.get_index_mapping".to_string(),
+            "platform.core.get_document_by_id".to_string(),
+        ];
         Self {
             name: String::new(),
             description: String::new(),
             instructions: String::new(),
             focus: CreateAgentField::Name,
+            tab: CreateAgentTab::Prompt,
+
+            tools_loading: false,
+            tools_error: None,
+            tools: Vec::new(),
+            tools_selected_index: 0,
+            tools_list_state: ListState::default(),
+            selected_tool_ids,
+
             submitting: false,
             error: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreateAgentTab {
+    Prompt,
+    Tools,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -2,7 +2,7 @@ use ratatui::crossterm::event::{KeyCode, KeyModifiers, MouseEventKind};
 
 use super::{
     Cmd, Model, Msg,
-    model::{ActivePanel, CreateAgentField, CreateAgentModal, Modal},
+    model::{ActivePanel, CreateAgentField, CreateAgentModal, CreateAgentTab, Modal},
 };
 
 pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
@@ -107,7 +107,11 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                             });
                             return vec![];
                         }
-                        model.modal = Some(Modal::CreateAgent(CreateAgentModal::default()));
+                        let mut state = CreateAgentModal::default();
+                        state.tools_loading = true;
+                        model.modal = Some(Modal::CreateAgent(state));
+                        // Kick off tool discovery immediately (for the Tools tab).
+                        return vec![Cmd::LoadTools];
                     }
                 }
 
@@ -262,6 +266,39 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             vec![]
         }
 
+        Msg::ToolsLoaded { mut tools } => {
+            // Stable ordering for keyboard navigation.
+            tools.sort_by(|a, b| a.id.to_lowercase().cmp(&b.id.to_lowercase()));
+            if let Some(Modal::CreateAgent(state)) = model.modal.as_mut() {
+                state.tools_loading = false;
+                state.tools_error = None;
+                state.tools = tools;
+                state.tools_selected_index = 0;
+                state.tools_list_state = ratatui::widgets::ListState::default();
+                if !state.tools.is_empty() {
+                    state.tools_list_state.select(Some(0));
+                }
+                // Prune selected tool IDs to those that exist (keeps payload valid).
+                let valid: std::collections::HashSet<String> =
+                    state.tools.iter().map(|t| t.id.clone()).collect();
+                state.selected_tool_ids.retain(|id| valid.contains(id));
+            }
+            vec![]
+        }
+
+        Msg::ToolsLoadFailed { error } => {
+            if let Some(Modal::CreateAgent(state)) = model.modal.as_mut() {
+                state.tools_loading = false;
+                state.tools_error = Some(error);
+            } else {
+                model.chat.push(super::model::ChatEntry::system(format!(
+                    "Failed to load tools: {}",
+                    error
+                )));
+            }
+            vec![]
+        }
+
         Msg::AgentCreated { agent } => {
             model.chat.push(super::model::ChatEntry::system(format!(
                 "Created agent: {} ({})",
@@ -392,9 +429,61 @@ fn update_create_agent_modal(
         return (false, vec![]);
     }
 
-    // Submit (avoid relying only on Ctrl+S, which can be flow-control in some terminals).
-    let submit = (key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('s'))
-        || key.code == KeyCode::F(2);
+    // Tab switching between "Prompt" and "Tools" views.
+    match key.code {
+        KeyCode::Left => {
+            state.tab = match state.tab {
+                CreateAgentTab::Prompt => CreateAgentTab::Tools,
+                CreateAgentTab::Tools => CreateAgentTab::Prompt,
+            };
+            return (false, vec![]);
+        }
+        KeyCode::Right => {
+            state.tab = match state.tab {
+                CreateAgentTab::Prompt => CreateAgentTab::Tools,
+                CreateAgentTab::Tools => CreateAgentTab::Prompt,
+            };
+            return (false, vec![]);
+        }
+        _ => {}
+    }
+
+    // Tools tab interaction.
+    if state.tab == CreateAgentTab::Tools {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                if !state.tools.is_empty() {
+                    state.tools_selected_index = state.tools_selected_index.saturating_sub(1);
+                    state
+                        .tools_list_state
+                        .select(Some(state.tools_selected_index.min(state.tools.len() - 1)));
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if !state.tools.is_empty() {
+                    state.tools_selected_index =
+                        (state.tools_selected_index + 1).min(state.tools.len() - 1);
+                    state.tools_list_state.select(Some(state.tools_selected_index));
+                }
+            }
+            KeyCode::Char(' ') | KeyCode::Enter => {
+                if let Some(t) = state.tools.get(state.tools_selected_index) {
+                    toggle_tool(&t.id, &mut state.selected_tool_ids);
+                }
+            }
+            KeyCode::Char('A') => {
+                state.selected_tool_ids = state.tools.iter().map(|t| t.id.clone()).collect();
+            }
+            KeyCode::Char('X') => {
+                state.selected_tool_ids.clear();
+            }
+            // submit still available from tools tab
+            _ => {}
+        }
+    }
+
+    // Submit (Ctrl+S).
+    let submit = key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('s');
     if submit {
         state.error = None;
         let name = state.name.trim().to_string();
@@ -409,6 +498,11 @@ fn update_create_agent_modal(
         if instructions.is_empty() {
             state.error = Some("Instructions/prompt is required.".to_string());
             state.focus = CreateAgentField::Instructions;
+            return (false, vec![]);
+        }
+        if state.selected_tool_ids.is_empty() {
+            state.error = Some("Select at least one tool (Tools tab).".to_string());
+            state.tab = CreateAgentTab::Tools;
             return (false, vec![]);
         }
 
@@ -427,8 +521,14 @@ fn update_create_agent_modal(
                 name,
                 description,
                 instructions,
+                tool_ids: state.selected_tool_ids.clone(),
             }],
         );
+    }
+
+    // Prompt tab interaction (text entry).
+    if state.tab != CreateAgentTab::Prompt {
+        return (false, vec![]);
     }
 
     match key.code {
@@ -484,6 +584,15 @@ fn update_create_agent_modal(
     }
 
     (false, vec![])
+}
+
+fn toggle_tool(id: &str, selected: &mut Vec<String>) {
+    if let Some(pos) = selected.iter().position(|s| s == id) {
+        selected.remove(pos);
+    } else {
+        selected.push(id.to_string());
+        selected.sort();
+    }
 }
 
 fn generate_agent_id(name: &str) -> String {

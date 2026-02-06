@@ -172,6 +172,37 @@ fn execute_cmd(
                 }
             });
         }
+        Cmd::LoadTools => {
+            let cfg = model.config.clone();
+            rt.spawn(async move {
+                if !cfg.is_ready() {
+                    let _ = tx.send(Msg::ToolsLoadFailed {
+                        error: "Missing KIBANA_URL/ES_HOST and/or API_KEY/ES_API_KEY.".to_string(),
+                    });
+                    return;
+                }
+                let client = match crate::elastic::AgentBuilderClient::new(&cfg) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = tx.send(Msg::ToolsLoadFailed {
+                            error: e.to_string(),
+                        });
+                        return;
+                    }
+                };
+
+                match client.list_tools().await {
+                    Ok(tools) => {
+                        let _ = tx.send(Msg::ToolsLoaded { tools });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Msg::ToolsLoadFailed {
+                            error: e.to_string(),
+                        });
+                    }
+                }
+            });
+        }
         Cmd::StartRun => {
             // Snapshot required state for the background run.
             let cfg = model.config.clone();
@@ -247,6 +278,7 @@ fn execute_cmd(
             name,
             description,
             instructions,
+            tool_ids,
         } => {
             let cfg = model.config.clone();
             rt.spawn(async move {
@@ -273,12 +305,7 @@ fn execute_cmd(
                     configuration: crate::elastic::CreateAgentConfiguration {
                         instructions: Some(instructions),
                         tools: vec![crate::elastic::CreateAgentTools {
-                            tool_ids: vec![
-                                "platform.core.search".to_string(),
-                                "platform.core.list_indices".to_string(),
-                                "platform.core.get_index_mapping".to_string(),
-                                "platform.core.get_document_by_id".to_string(),
-                            ],
+                            tool_ids,
                         }],
                     },
                     // Keep avatar minimal; users can edit later in Kibana.
