@@ -354,7 +354,14 @@ fn chat_lines_wrapped(model: &Model, width: u16) -> Vec<Line<'static>> {
         out.push(label_line);
 
         if matches!(entry.role, ChatRole::User | ChatRole::Agent) {
-            out.extend(bubble_lines(&entry.content, width, style, is_user));
+            // Keep role label colored, but make bubble borders subtle.
+            let bubble_border_style = Style::default().fg(ElasticTheme::SUBTLE);
+            out.extend(bubble_lines(
+                &entry.content,
+                width,
+                bubble_border_style,
+                is_user,
+            ));
         } else {
             for raw in entry.content.lines() {
                 for wrapped in wrap_one_line(raw, width) {
