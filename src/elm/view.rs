@@ -353,13 +353,17 @@ fn chat_lines_wrapped(model: &Model, width: u16) -> Vec<Line<'static>> {
         }
         out.push(label_line);
 
-        for raw in entry.content.lines() {
-            for wrapped in wrap_one_line(raw, width) {
-                let mut line = Line::from(Span::raw(wrapped));
-                if is_user {
-                    line = line.right_aligned();
+        if matches!(entry.role, ChatRole::User | ChatRole::Agent) {
+            out.extend(bubble_lines(&entry.content, width, style, is_user));
+        } else {
+            for raw in entry.content.lines() {
+                for wrapped in wrap_one_line(raw, width) {
+                    let mut line = Line::from(Span::raw(wrapped));
+                    if is_user {
+                        line = line.right_aligned();
+                    }
+                    out.push(line);
                 }
-                out.push(line);
             }
         }
         out.push(Line::from(""));
@@ -379,6 +383,83 @@ fn chat_lines_wrapped(model: &Model, width: u16) -> Vec<Line<'static>> {
         );
         out.push(Line::from(""));
     }
+
+    out
+}
+
+fn bubble_lines(content: &str, width: u16, border_style: Style, align_right: bool) -> Vec<Line<'static>> {
+    let total_w = width as usize;
+    if total_w < 4 {
+        // Too narrow to draw a box; fall back to plain wrapping.
+        return wrap_preserve_newlines(content, width)
+            .into_iter()
+            .map(|s| Line::from(Span::raw(s)))
+            .collect();
+    }
+
+    // Leave a tiny margin so bubbles don't touch the pane border.
+    let margin = 1usize;
+    let max_bubble_w = total_w.saturating_sub(margin).max(4);
+    let max_inner_w = max_bubble_w.saturating_sub(2).max(1);
+
+    // Wrap content to the maximum inner width.
+    let mut wrapped_lines: Vec<String> = Vec::new();
+    for line in content.lines() {
+        wrapped_lines.extend(wrap_one_line(line, max_inner_w.min(u16::MAX as usize) as u16));
+    }
+    if content.ends_with('\n') {
+        wrapped_lines.push(String::new());
+    }
+    if wrapped_lines.is_empty() {
+        wrapped_lines.push(String::new());
+    }
+
+    let longest = wrapped_lines
+        .iter()
+        .map(|s| s.chars().count())
+        .max()
+        .unwrap_or(1);
+    let inner_w = longest.clamp(1, max_inner_w);
+    let bubble_w = inner_w + 2;
+
+    let left_pad = if align_right {
+        total_w.saturating_sub(bubble_w)
+    } else {
+        0
+    };
+    let pad = " ".repeat(left_pad);
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+
+    let top = Line::from(vec![
+        Span::raw(pad.clone()),
+        Span::styled("┌".to_string(), border_style),
+        Span::styled("─".repeat(inner_w), border_style),
+        Span::styled("┐".to_string(), border_style),
+    ]);
+    out.push(top);
+
+    for line in wrapped_lines {
+        let len = line.chars().count();
+        let mut body = line;
+        if len < inner_w {
+            body.push_str(&" ".repeat(inner_w - len));
+        }
+        out.push(Line::from(vec![
+            Span::raw(pad.clone()),
+            Span::styled("│".to_string(), border_style),
+            Span::raw(body),
+            Span::styled("│".to_string(), border_style),
+        ]));
+    }
+
+    let bottom = Line::from(vec![
+        Span::raw(pad),
+        Span::styled("└".to_string(), border_style),
+        Span::styled("─".repeat(inner_w), border_style),
+        Span::styled("┘".to_string(), border_style),
+    ]);
+    out.push(bottom);
 
     out
 }
