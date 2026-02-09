@@ -15,6 +15,7 @@ dependencies = [
  "serde_json",
  "textwrap",
  "tokio",
+ "unicode-segmentation",
 ]
 
 [[package]]

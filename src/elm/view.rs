@@ -9,6 +9,7 @@ use ratatui::{
     },
 };
 use textwrap::Options;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::theme::ElasticTheme;
 
@@ -412,7 +413,7 @@ fn bubble_lines(content: &str, width: u16, border_style: Style, align_right: boo
     // Wrap content to the maximum inner width.
     let mut wrapped_lines: Vec<String> = Vec::new();
     for line in content.lines() {
-        wrapped_lines.extend(wrap_one_line(line, max_inner_w.min(u16::MAX as usize) as u16));
+        wrapped_lines.extend(wrap_one_line_bubble(line, max_inner_w));
     }
     if content.ends_with('\n') {
         wrapped_lines.push(String::new());
@@ -423,16 +424,16 @@ fn bubble_lines(content: &str, width: u16, border_style: Style, align_right: boo
 
     let longest = wrapped_lines
         .iter()
-        .map(|s| s.chars().count())
+        .map(|s| terminalish_display_width(s))
         .max()
         .unwrap_or(1);
     let inner_w = longest.clamp(1, max_inner_w);
     let bubble_w = inner_w + 2;
 
     let left_pad = if align_right {
-        total_w.saturating_sub(bubble_w)
+        total_w.saturating_sub(bubble_w + margin)
     } else {
-        0
+        margin
     };
     let pad = " ".repeat(left_pad);
 
@@ -447,10 +448,10 @@ fn bubble_lines(content: &str, width: u16, border_style: Style, align_right: boo
     out.push(top);
 
     for line in wrapped_lines {
-        let len = line.chars().count();
         let mut body = line;
-        if len < inner_w {
-            body.push_str(&" ".repeat(inner_w - len));
+        let w = terminalish_display_width(&body);
+        if w < inner_w {
+            body.push_str(&" ".repeat(inner_w - w));
         }
         out.push(Line::from(vec![
             Span::raw(pad.clone()),
@@ -468,6 +469,65 @@ fn bubble_lines(content: &str, width: u16, border_style: Style, align_right: boo
     ]);
     out.push(bottom);
 
+    out
+}
+
+fn terminalish_display_width(s: &str) -> usize {
+    UnicodeSegmentation::graphemes(s, true)
+        .map(grapheme_terminalish_width)
+        .sum()
+}
+
+fn grapheme_terminalish_width(g: &str) -> usize {
+    // For most emoji, `display_width` is correct. The remaining common failure mode in
+    // terminals is a text-presentation symbol (width 1) + VS16 emoji presentation, e.g. "⚔️".
+    // If the grapheme contains VS16 and would otherwise be width 1, treat it as width 2.
+    const VS16: char = '\u{FE0F}';
+    let w = textwrap::core::display_width(g);
+    if w == 1 && g.chars().any(|c| c == VS16) {
+        2
+    } else {
+        w
+    }
+}
+
+fn wrap_one_line_bubble(s: &str, max_w: usize) -> Vec<String> {
+    if max_w == 0 {
+        return vec![String::new()];
+    }
+    if s.is_empty() {
+        return vec![String::new()];
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut cur_w: usize = 0;
+
+    for g in UnicodeSegmentation::graphemes(s, true) {
+        let gw = grapheme_terminalish_width(g);
+
+        if !cur.is_empty() && cur_w + gw > max_w {
+            out.push(cur);
+            cur = String::new();
+            cur_w = 0;
+        }
+
+        if cur.is_empty() && gw > max_w {
+            // Single grapheme wider than max_w; emit it anyway.
+            out.push(g.to_string());
+            continue;
+        }
+
+        cur.push_str(g);
+        cur_w += gw;
+    }
+
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
     out
 }
 
