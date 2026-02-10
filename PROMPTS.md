@@ -29,7 +29,3 @@ How can I file an SDH?
 ## Prompt 8
 
 Should we file CVEs as SDH tickets?
-
-## Prompt 9
-
-Can you grab the contents of Report_Forrester_TEI.pdf?
