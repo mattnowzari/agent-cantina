@@ -1,5 +1,5 @@
 # Agent Cantina
-### _"Keep those Agents fed with prompts!"_
+### _"Keep your Agents fed with prompts!"_
 
 ## What is Agent Cantina?
 
@@ -8,11 +8,13 @@ Agent Cantina is a TUI tool for Elastic Agent Builder developers.
 With it, you can:
 - Load, edit and save a series of individual prompts from a `PROMPTS.md` file.
 - Run an automatic chat session against an Agent with the prompts in your `PROMPTS.md` file - no more manually chatting with an agent to verify something works!
-- View all existing Agents in the Kibana instance, and create brand new ones with assigned tools
+- View all existing Agents in the Kibana instance, and create brand new ones with assigned tools.
+
+<img src="images/app.png" alt="Agent Cantina" width="600" />
 
 ## Who is this tool for?
 
-This tool is ideal for developers who require repeatable chat sessions while developing or modifying:
+This tool is for developers who require repeatable chat sessions while developing or modifying:
 
 - [Custom Agents](https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/agent-builder-agents#custom-agents)
 - [Tools](https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/tools)
@@ -22,7 +24,7 @@ This tool is ideal for developers who require repeatable chat sessions while dev
 
 You can download a Mac-compatible binary under the Releases page.
 
-Agent Cantina requires your Elasticsearch host and API keys to be set as environment variables.
+Agent Cantina requires your Kibana URL and API key to be set as environment variables.
 
 ```shell
 export KIBANA_URL=<your-kibana-url>
@@ -30,9 +32,10 @@ export API_KEY=<your-api-key>
 
 # alternatively, you can create an .env file and Agent Cantina will pick up the environment variables from there
 
-echo export KIBANA_URL=<your-kibana-url> \
-\\nexport API_KEY=<your-api-key> \
-> .env
+cat > .env <<'EOF'
+KIBANA_URL=<your-kibana-url>
+API_KEY=<your-api-key>
+EOF
 
 ./agent_cantina
 ```
@@ -62,7 +65,7 @@ You can cycle through the current "active" panel with the `Tab` key.
 ### The Prompts panel and `PROMPTS.md`
 This is where you can view and edit your `PROMPTS.md` file. If no `PROMPTS.md` is present, Agent Cantina will create a basic one for you and load it.
 
-<img src="images/prompts_panel.png" alt="Prompts panel" width="800" />
+<img src="images/prompts_panel.png" alt="Prompts panel" width="600" />
 
 > A note on formatting - `PROMPTS.md` needs to follow a _very_ specific format:
 ```
@@ -86,9 +89,9 @@ Special actions available in the Prompts panel:
 
 This is where you can select an Agent to send your prompts to.
 
-<img src="images/agents_panel.png" alt="Agents panel" width="800" />
+<img src="images/agents_panel.png" alt="Agents panel" width="600" />
 
-All agents that are configured in Agent Builder will appear here. Use the `up/down` arrows to choose an Agent, and `Enter` to begin a chat session with it.
+All agents that are configured in Agent Builder will appear here. Use the `Up/Down` arrows to choose an Agent, and `Enter` to begin a chat session with it.
 
 Special actions available in the Agents panel:
 
@@ -97,9 +100,9 @@ Special actions available in the Agents panel:
 
 ### Creating a brand-new agent from within Agent Cantina
 
-You can create a new agent by hitting `n` in the Agent panel. This will open a new pop-up panel with two tabs, `Prompt` and `Tools`.
+You can create a new agent by hitting `n` in the Agents panel. This will open a new popup window with two tabs, `Prompt` and `Tools`.
 
-<img src="images/new_agent_window.png" alt="New Agent window" width="800" />
+<img src="images/new_agent_window.png" alt="New Agent window" width="600" />
 
 In the `Prompt` tab, you can set:
 
@@ -109,24 +112,24 @@ In the `Prompt` tab, you can set:
 
 Use the `Tab` key to switch between each field in the `Prompt` tab.
 
-Use the `left/right` arrows to switch between the `Prompt` and `Tools` tabs. In the `Tools` tab, use the `up/down` and `Enter` keys to select which tools the Agent should be configured with.
+Use the `Left/Right` arrows to switch between the `Prompt` and `Tools` tabs. In the `Tools` tab, use the `Up/Down` and `Enter` keys to select which tools the Agent should be configured with.
 
 When you are done configuring your agent, use `Ctrl-S` to create your Agent!
 
-<img src="images/new_agent_set_tools_window.png" alt="New Agent window" width="800" />
+<img src="images/new_agent_set_tools_window.png" alt="New Agent window" width="600" />
 
 
 ### The Conversation panel
 
 This is where you can see the chat session prompts and responses, as well as system messages.
 
-<img src="images/conversation_panel.png" alt="Conversation panel" width="800" />
+<img src="images/conversation_panel.png" alt="Conversation panel" width="600" />
 
 Special actions available in the Conversations panel:
 
-- `r`: Re-run the chat session (good for if you make edits to your `PROMPTS.md` and need to try again)
+- `r`: Re-run the chat session (good if you make edits to your `PROMPTS.md` and need to try again)
 - `End`: Go to the bottom of the chat window (latest message)
-- `Ctrl-D`: Dump the entire chat history into a Markdown file (will be written in the same location as the Agent Cantina executable)
+- `Ctrl-D`: Dump the entire chat history into a Markdown file (written to the current working directory)
 
 > Cool thing to try - all three panels will respond to mouse scrolling input!
 
@@ -149,17 +152,20 @@ make build-release # for release builds
 
   - **Answer**: Yeah, it's good for small edits and tweaks, but you probably shouldn't write the entire thing there. That's what `Ctrl+R` is for - you can make edits in your own text editor, save it, then reload the `PROMPTS.md` file!
 
-- **Question**: The color theme doesn't look good on my particular terminal
+- **Question**: The color theme doesn't look good on my particular terminal?
 
-  - **Answer** The theme is based on Elastic's colorway, and is defined in `theme.rs`. You can always change it up to suit your particular terminal or preferences! You'll have to re-build the executable, though. This may turn into a YAML file or something later, who knows?
+  - **Answer**: The theme is based on Elastic's colorway, and is defined in `theme.rs`. You can always change it up to suit your particular terminal or preferences! You'll have to re-build the executable, though. This may turn into a YAML file or something later, who knows?
+
+- **Question**: Was this vibecoded?
+  - **Answer**: 100%. As an enthusiast of the Rust language, I really wanted to write this one by hand, but I just don't have enough hours in the day to write tooling on top of feature work :(
 
 ## Feature wishlist/To-dos (in no particular order)
 
-- Standardize some of the inputs (`g` for relaod in one panel, but `Ctrl-R` for another is not consistent)
+- Standardize some of the inputs (`g` for reload in one panel, but `Ctrl-R` for another is not consistent)
 - Possibly improve the `PROMPTS.md` required formatting to be less verbose
 - Dump chat history into Elasticsearch indices
 - When dumping to markdown, it should save to a configurable directory
-- Ability to load different Markdown files via a file browswer-type interface
+- Ability to load different Markdown files via a file browser-type interface
 - Implement some basic error logging
 - Track conversation IDs so certain conversations can be resumed, even after Agent Cantina is exited and started again
 - Allow editing of agents, not just creation
