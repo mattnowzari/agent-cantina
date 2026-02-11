@@ -39,6 +39,17 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                     return cmds;
                 }
             }
+            // Conversation dump: Ctrl+D when Conversation panel is active.
+            if model.active == ActivePanel::Bottom
+                && key.modifiers.contains(KeyModifiers::CONTROL)
+                && key.code == KeyCode::Char('d')
+            {
+                let (path, md) = build_conversation_markdown_dump(model);
+                return vec![Cmd::DumpConversationMarkdown {
+                    path,
+                    markdown: md,
+                }];
+            }
             match key.code {
                 // Panel selection
                 KeyCode::Tab => cycle_panel(model, CycleDir::Forward),
@@ -204,6 +215,21 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         Msg::PromptsSaveFailed { error } => {
             model.modal = Some(super::model::Modal::Error {
                 title: "Failed to save PROMPTS.md".to_string(),
+                message: error,
+            });
+            vec![]
+        }
+
+        Msg::ConversationDumped { path } => {
+            model.chat.push(super::model::ChatEntry::system(format!(
+                "Conversation dumped to {path}"
+            )));
+            vec![]
+        }
+
+        Msg::ConversationDumpFailed { error } => {
+            model.modal = Some(super::model::Modal::Error {
+                title: "Failed to dump conversation".to_string(),
                 message: error,
             });
             vec![]
@@ -431,6 +457,69 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         }
 
     }
+}
+
+fn build_conversation_markdown_dump(model: &Model) -> (String, String) {
+    let dumped_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let fname_ts = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+    let path = format!("conversation_dump_{fname_ts}.md");
+
+    let agent_id = model
+        .selected_agent_id
+        .as_deref()
+        .unwrap_or(&model.config.agent_id);
+    let conversation_id = model
+        .conversation_id
+        .as_deref()
+        .unwrap_or("<none>");
+
+    let mut out = String::new();
+    out.push_str("# Agent Cantina conversation dump\n\n");
+    out.push_str(&format!("- dumped_at: `{dumped_at}`\n"));
+    out.push_str(&format!("- agent_id: `{agent_id}`\n"));
+    out.push_str(&format!("- conversation_id: `{conversation_id}`\n"));
+    out.push('\n');
+    out.push_str("---\n\n");
+
+    for entry in &model.chat {
+        let who = match entry.role {
+            super::model::ChatRole::System => "system",
+            super::model::ChatRole::User => "you",
+            super::model::ChatRole::Agent => "agent",
+        };
+        out.push_str(&format!("## [{}] {who}\n\n", entry.timestamp));
+
+        let fence = markdown_fence(&entry.content);
+        out.push_str(&fence);
+        out.push('\n');
+        out.push_str("text\n");
+        out.push_str(&entry.content);
+        if !entry.content.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(&fence);
+        out.push('\n');
+        out.push('\n');
+        out.push('\n');
+    }
+
+    (path, out)
+}
+
+fn markdown_fence(s: &str) -> String {
+    // Pick a backtick fence longer than any run of backticks in content.
+    let mut max_run = 0usize;
+    let mut cur = 0usize;
+    for ch in s.chars() {
+        if ch == '`' {
+            cur += 1;
+            max_run = max_run.max(cur);
+        } else {
+            cur = 0;
+        }
+    }
+    let n = (max_run + 1).max(3);
+    "`".repeat(n)
 }
 
 fn handle_prompts_editor_key(model: &mut Model, key: ratatui::crossterm::event::KeyEvent) -> Option<Vec<Cmd>> {

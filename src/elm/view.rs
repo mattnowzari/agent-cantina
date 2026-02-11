@@ -229,7 +229,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     let bottom_title = Line::from(vec![
         Span::raw("Conversation  "),
         Span::styled(run_hint, run_hint_style.add_modifier(Modifier::BOLD)),
-        Span::raw("[Esc quit] [↑/↓ scroll] [End bottom]"),
+        Span::raw("[Esc quit] [↑/↓ scroll] [End bottom] [Ctrl+D dump]"),
     ]);
     let bottom_block = Block::default()
         .title(bottom_title)

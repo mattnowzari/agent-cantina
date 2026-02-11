@@ -161,6 +161,32 @@ fn execute_cmd(
                 }
             });
         }
+        Cmd::DumpConversationMarkdown { path, markdown } => {
+            rt.spawn(async move {
+                let path_for_send = path.clone();
+                let res = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                    std::fs::write(&path, markdown)?;
+                    Ok(())
+                })
+                .await;
+
+                match res {
+                    Ok(Ok(())) => {
+                        let _ = tx.send(Msg::ConversationDumped { path: path_for_send });
+                    }
+                    Ok(Err(e)) => {
+                        let _ = tx.send(Msg::ConversationDumpFailed {
+                            error: e.to_string(),
+                        });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Msg::ConversationDumpFailed {
+                            error: e.to_string(),
+                        });
+                    }
+                }
+            });
+        }
         Cmd::LoadEnv => {
             rt.spawn(async move {
                 let cfg = tokio::task::spawn_blocking(crate::config::load_from_env)

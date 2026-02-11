@@ -19,6 +19,9 @@ pub enum Msg {
     PromptsSaved { raw: String, prompts: Vec<String> },
     PromptsSaveFailed { error: String },
 
+    ConversationDumped { path: String },
+    ConversationDumpFailed { error: String },
+
     EnvLoaded { config: Config },
 
     AgentsLoaded { agents: Vec<crate::elastic::AgentSummary> },

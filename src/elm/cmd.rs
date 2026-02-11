@@ -2,6 +2,7 @@
 pub enum Cmd {
     LoadPromptsFile { path: String },
     SavePromptsFile { path: String, raw: String },
+    DumpConversationMarkdown { path: String, markdown: String },
     LoadEnv,
     LoadAgents,
     LoadTools,
