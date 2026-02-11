@@ -286,10 +286,16 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             model.agents_loading = false;
             model.agents_loaded = false;
             model.agents_error = Some(error.clone());
-            model.modal = Some(super::model::Modal::Error {
-                title: "Failed to load agents".to_string(),
-                message: error,
-            });
+            // If env is missing, prefer the MissingEnv modal over a generic request failure.
+            let missing = model.config.missing();
+            if !missing.is_empty() {
+                model.modal = Some(super::model::Modal::MissingEnv { missing });
+            } else {
+                model.modal = Some(super::model::Modal::Error {
+                    title: "Failed to load agents".to_string(),
+                    message: error,
+                });
+            }
             vec![]
         }
 
@@ -316,12 +322,18 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         Msg::ToolsLoadFailed { error } => {
             if let Some(Modal::CreateAgent(state)) = model.modal.as_mut() {
                 state.tools_loading = false;
-                state.tools_error = Some(error);
+                state.tools_error = Some(error.clone());
             } else {
-                model.chat.push(super::model::ChatEntry::system(format!(
-                    "Failed to load tools: {}",
-                    error
-                )));
+                // If env is missing, show the MissingEnv modal; otherwise log it.
+                let missing = model.config.missing();
+                if !missing.is_empty() {
+                    model.modal = Some(super::model::Modal::MissingEnv { missing });
+                } else {
+                    model.chat.push(super::model::ChatEntry::system(format!(
+                        "Failed to load tools: {}",
+                        error
+                    )));
+                }
             }
             vec![]
         }

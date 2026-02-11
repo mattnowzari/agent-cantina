@@ -112,7 +112,12 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
         .border_style(agents_border);
 
     if !model.config.is_ready() {
-        let w = Paragraph::new("Waiting for env (KIBANA_URL/ES_HOST and API_KEY/ES_API_KEY)…")
+        let msg = if model.env_loaded {
+            "Missing env vars (KIBANA_URL/ES_HOST and API_KEY/ES_API_KEY). Press Enter/Esc to dismiss the modal."
+        } else {
+            "Waiting for env (KIBANA_URL/ES_HOST and API_KEY/ES_API_KEY)…"
+        };
+        let w = Paragraph::new(msg)
             .wrap(Wrap { trim: false });
         let inner = agents_block.inner(agents);
         frame.render_widget(agents_block, agents);

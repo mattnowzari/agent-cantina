@@ -58,6 +58,10 @@ impl AgentBuilderClient {
 
         let http = reqwest::Client::builder()
             .default_headers(headers)
+            // Local Kibana `--ssl` often uses a self-signed CA and a CN that doesn't match the host
+            // (e.g. CN=kibana while you connect to https://localhost:5601).
+            .danger_accept_invalid_certs(cfg.insecure_tls)
+            .danger_accept_invalid_hostnames(cfg.insecure_tls)
             .build()?;
 
         Ok(Self {

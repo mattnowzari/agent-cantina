@@ -4,6 +4,8 @@ pub struct Config {
     pub api_key: Option<String>,
     pub space: Option<String>,
     pub agent_id: String,
+    /// Dev-only: allow self-signed certs / hostname mismatches (e.g. Kibana `--ssl` on localhost).
+    pub insecure_tls: bool,
 }
 
 impl Default for Config {
@@ -13,6 +15,7 @@ impl Default for Config {
             api_key: None,
             space: None,
             agent_id: "elastic-ai-agent".to_string(),
+            insecure_tls: false,
         }
     }
 }
@@ -41,10 +44,11 @@ pub fn load_from_env() -> Config {
 
     let mut cfg = Config::default();
 
-    cfg.kibana_url = env_first_nonempty(&["KIBANA_URL", "ES_HOST", "ES_URL", "ELASTIC_HOST"]);
-    cfg.api_key = env_first_nonempty(&["API_KEY", "ES_API_KEY", "ELASTIC_API_KEY"]);
+    cfg.kibana_url = env_first_nonempty(&["KIBANA_URL"]);
+    cfg.api_key = env_first_nonempty(&["API_KEY"]);
 
     cfg.space = env_first_nonempty(&["KIBANA_SPACE", "SPACE"]);
+    cfg.insecure_tls = env_bool(&["KIBANA_INSECURE_TLS", "INSECURE_TLS"], false);
 
     if let Ok(agent_id) = std::env::var("AGENT_ID") {
         let agent_id = agent_id.trim().to_string();
@@ -66,4 +70,17 @@ fn env_first_nonempty(keys: &[&str]) -> Option<String> {
         }
     }
     None
+}
+
+fn env_bool(keys: &[&str], default: bool) -> bool {
+    for k in keys {
+        if let Ok(v) = std::env::var(k) {
+            let v = v.trim().to_ascii_lowercase();
+            if v.is_empty() {
+                continue;
+            }
+            return matches!(v.as_str(), "1" | "true" | "yes" | "y" | "on");
+        }
+    }
+    default
 }
