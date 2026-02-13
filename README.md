@@ -99,6 +99,7 @@ Special actions available in the Agents panel:
 
 - `n`: Create a brand new Agent
 - `e`: Edit an existing Agent
+- `d`: Delete an existing Agent
 - `Ctrl-R`: Reload the list of agents from Agent Builder
 
 ### Creating a brand-new agent from within Agent Cantina
