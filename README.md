@@ -96,7 +96,7 @@ All agents that are configured in Agent Builder will appear here. Use the `Up/Do
 Special actions available in the Agents panel:
 
 - `n`: Create a brand new Agent from within Agent Cantina
-- `g`: Reload the list of agents from Agent Builder
+- `Ctrl-R`: Reload the list of agents from Agent Builder
 
 ### Creating a brand-new agent from within Agent Cantina
 
@@ -129,7 +129,7 @@ Special actions available in the Conversations panel:
 
 - `r`: Re-run the chat session (good if you make edits to your `PROMPTS.md` and need to try again)
 - `End`: Go to the bottom of the chat window (latest message)
-- `Ctrl-D`: Dump the entire chat history into a Markdown file (written to the current working directory)
+- `Ctrl-S`: Dump the entire chat history into a Markdown file (written to the current working directory)
 
 > Cool thing to try - all three panels will respond to mouse scrolling input!
 
@@ -161,7 +161,6 @@ make build-release # for release builds
 
 ## Feature wishlist/To-dos (in no particular order)
 
-- Standardize some of the inputs (`g` for reload in one panel, but `Ctrl-R` for another is not consistent)
 - Possibly improve the `PROMPTS.md` required formatting to be less verbose
 - Dump chat history into Elasticsearch indices
 - When dumping to markdown, it should save to a configurable directory

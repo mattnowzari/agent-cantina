@@ -39,10 +39,24 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                     return cmds;
                 }
             }
-            // Conversation dump: Ctrl+D when Conversation panel is active.
+            // Standardized reload: Ctrl+R in Agents panel reloads agents list.
+            if model.active == ActivePanel::Agents
+                && key.modifiers.contains(KeyModifiers::CONTROL)
+                && key.code == KeyCode::Char('r')
+            {
+                model.agents_loaded = false;
+                model.agents_loading = false;
+                model.agents_error = None;
+                model.agents.clear();
+                model.agent_selected_index = 0;
+                model.selected_agent_id = None;
+                model.agents_list_state = ratatui::widgets::ListState::default();
+                return maybe_load_agents(model);
+            }
+            // Conversation dump: Ctrl+S when Conversation panel is active.
             if model.active == ActivePanel::Bottom
                 && key.modifiers.contains(KeyModifiers::CONTROL)
-                && key.code == KeyCode::Char('d')
+                && key.code == KeyCode::Char('s')
             {
                 let (path, md) = build_conversation_markdown_dump(model);
                 return vec![Cmd::DumpConversationMarkdown {
@@ -97,20 +111,6 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                             model.run_state = super::model::RunState::Running;
                             return vec![Cmd::StartRun];
                         }
-                    }
-                }
-
-                // Refresh agent list
-                KeyCode::Char('g') => {
-                    if model.active == ActivePanel::Agents {
-                        model.agents_loaded = false;
-                        model.agents_loading = false;
-                        model.agents_error = None;
-                        model.agents.clear();
-                        model.agent_selected_index = 0;
-                        model.selected_agent_id = None;
-                        model.agents_list_state = ratatui::widgets::ListState::default();
-                        return maybe_load_agents(model);
                     }
                 }
 
