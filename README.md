@@ -65,6 +65,7 @@ Each panel serves a specific purpose, and has its own set of unique actions.
 You can cycle through the current "active" panel with the `Tab` key.
 
 ### The Prompts panel and `PROMPTS.md`
+---
 This is where you can view and edit your `PROMPTS.md` file. If no `PROMPTS.md` is present, Agent Cantina will create a basic one for you and load it.
 
 <img src="images/prompts_panel.png" alt="Prompts panel" width="600" />
@@ -88,7 +89,7 @@ Special actions available in the Prompts panel:
 - `Ctrl-R`: Reload the `PROMPTS.md` from disk
 
 ### The Agents panel
-
+---
 This is where you can select an Agent to send your prompts to.
 
 <img src="images/agents_panel.png" alt="Agents panel" width="600" />
@@ -126,7 +127,7 @@ Once you Agent has been created, you can go back and edit it by hitting `e` from
 
 
 ### The Conversation panel
-
+---
 This is where you can see the chat session prompts and responses, as well as system messages.
 
 <img src="images/conversation_panel.png" alt="Conversation panel" width="600" />
@@ -138,7 +139,9 @@ Special actions available in the Conversations panel:
 - `Ctrl-S`: Dump the entire chat history into a Markdown file (written to the current working directory)
 - `i`: Index your chat history into an Elasticsearch index
 
-> Cool thing to try - all three panels will respond to mouse scrolling input!
+When indexing your chat history, you will see the index name and document ID in the conversation history window:
+
+<img src="images/indexed_chat.png" alt="Indexed chat message" width="600" />
 
 ## Building from source
 
