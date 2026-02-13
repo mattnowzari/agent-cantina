@@ -103,7 +103,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     // Agents window
     let selected_agent_label = selected_agent_label(model);
     let agents_title = format!(
-        "Agents  [Tab switch] [↑/↓ select] [Enter choose+run] [n new] [g reload]  selected: {}",
+        "Agents  [Tab switch] [↑/↓ select] [Enter choose+run] [n new] [Ctrl+R reload]  selected: {}",
         selected_agent_label
     );
     let agents_block = Block::default()
@@ -229,7 +229,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     let bottom_title = Line::from(vec![
         Span::raw("Conversation  "),
         Span::styled(run_hint, run_hint_style.add_modifier(Modifier::BOLD)),
-        Span::raw("[Esc quit] [↑/↓ scroll] [End bottom] [Ctrl+D dump]"),
+        Span::raw("[Esc quit] [↑/↓ scroll] [End bottom] [Ctrl+S save]"),
     ]);
     let bottom_block = Block::default()
         .title(bottom_title)
