@@ -139,7 +139,9 @@ Special actions available in the Conversations panel:
 - `Ctrl-S`: Dump the entire chat history into a Markdown file (written to the current working directory)
 - `i`: Index your chat history into an Elasticsearch index
 
-> Cool thing to try - all three panels will respond to mouse scrolling input!
+When indexing your chat history, you will see the index name and document ID in the conversation history window:
+
+<img src="images/indexed_chat.png" alt="Indexed chat message" width="600" />
 
 ## Building from source
 
