@@ -34,6 +34,8 @@ pub enum Msg {
 
     AgentUpserted { agent: AgentSummary, is_edit: bool },
     AgentUpsertFailed { error: String, is_edit: bool },
+    AgentDeleted { id: String, name: String },
+    AgentDeleteFailed { error: String },
 
     AppendChat(ChatEntry),
     SetConversationId(Option<String>),

@@ -222,6 +222,43 @@ fn execute_cmd(
                 let _ = tx.send(Msg::ConversationIndexed { index, id });
             });
         }
+        Cmd::DeleteAgent { id } => {
+            let cfg = model.config.clone();
+            let agent_name = model
+                .agents
+                .iter()
+                .find(|a| a.id == id)
+                .map(|a| a.name.clone())
+                .unwrap_or_else(|| id.clone());
+            rt.spawn(async move {
+                if !cfg.is_ready() {
+                    let _ = tx.send(Msg::AgentDeleteFailed {
+                        error: "Missing KIBANA_URL and/or API_KEY.".to_string(),
+                    });
+                    return;
+                }
+                let client = match crate::agentbuilder::AgentBuilderClient::new(&cfg) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = tx.send(Msg::AgentDeleteFailed {
+                            error: e.to_string(),
+                        });
+                        return;
+                    }
+                };
+
+                if let Err(e) = client.delete_agent(&id).await {
+                    let _ = tx.send(Msg::AgentDeleteFailed {
+                        error: e.to_string(),
+                    });
+                    return;
+                }
+                let _ = tx.send(Msg::AgentDeleted {
+                    id,
+                    name: agent_name,
+                });
+            });
+        }
         Cmd::LoadEnv => {
             rt.spawn(async move {
                 let cfg = tokio::task::spawn_blocking(crate::config::load_from_env)

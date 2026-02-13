@@ -111,6 +111,14 @@ pub enum Modal {
     Info { title: String, message: String },
     Error { title: String, message: String },
     CreateAgent(CreateAgentModal),
+    ConfirmDeleteAgent(ConfirmDeleteAgentModal),
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfirmDeleteAgentModal {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub deleting: bool,
 }
 
 #[derive(Debug, Clone)]

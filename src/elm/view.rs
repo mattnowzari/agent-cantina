@@ -103,7 +103,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     // Agents window
     let selected_agent_label = selected_agent_label(model);
     let agents_title = format!(
-        "Agents  [Tab switch] [↑/↓ select] [Enter choose+run] [n new] [e edit] [Ctrl+R reload]  selected: {}",
+        "Agents  [Tab switch] [↑/↓ select] [Enter choose+run] [n new] [e edit] [d delete] [Ctrl+R reload]  selected: {}",
         selected_agent_label
     );
     let agents_block = Block::default()
@@ -605,6 +605,34 @@ fn render_modal(frame: &mut Frame, modal: &mut Modal) {
     frame.render_widget(Clear, rect);
     match modal {
         Modal::CreateAgent(state) => render_create_agent_modal(frame, rect, state),
+        Modal::ConfirmDeleteAgent(state) => {
+            let border_style = Style::default()
+                .fg(ElasticTheme::DANGER)
+                .add_modifier(Modifier::BOLD);
+
+            let message = if state.deleting {
+                format!(
+                    "Deleting agent:\n\n- Name: {}\n- Id: {}\n\nPlease wait…",
+                    state.agent_name, state.agent_id
+                )
+            } else {
+                format!(
+                    "Delete this agent? This cannot be undone.\n\n- Name: {}\n- Id: {}\n\nPress Y to delete, N to cancel.",
+                    state.agent_name, state.agent_id
+                )
+            };
+
+            let widget = Paragraph::new(message)
+                .block(
+                    Block::default()
+                        .title("Confirm deletion")
+                        .borders(Borders::ALL)
+                        .border_style(border_style),
+                )
+                .wrap(Wrap { trim: false });
+
+            frame.render_widget(widget, rect);
+        }
         Modal::MissingEnv { missing } => {
             let title = "Missing env vars";
             let message = format!(
