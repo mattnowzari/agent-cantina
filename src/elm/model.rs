@@ -1,6 +1,6 @@
 use crate::config::Config;
-use crate::elastic::AgentSummary;
-use crate::elastic::ToolSummary;
+use crate::agentbuilder::AgentSummary;
+use crate::agentbuilder::ToolSummary;
 use ratatui::widgets::ListState;
 
 #[derive(Debug)]
@@ -37,6 +37,7 @@ pub struct Model {
     pub conversation_id: Option<String>,
 
     pub waiting_for_response: bool,
+    pub indexing_conversation: bool,
     pub spinner_frame: usize,
 
     pub modal: Option<Modal>,
@@ -77,6 +78,7 @@ impl Default for Model {
             conversation_id: None,
 
             waiting_for_response: false,
+            indexing_conversation: false,
             spinner_frame: 0,
 
             modal: None,

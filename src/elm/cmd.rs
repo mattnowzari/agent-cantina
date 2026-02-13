@@ -3,6 +3,7 @@ pub enum Cmd {
     LoadPromptsFile { path: String },
     SavePromptsFile { path: String, raw: String },
     DumpConversationMarkdown { path: String, markdown: String },
+    IndexConversationToEs { index: String, id: String, doc: serde_json::Value },
     LoadEnv,
     LoadAgents,
     LoadTools,

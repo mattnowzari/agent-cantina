@@ -56,7 +56,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     };
 
     let top_title = format!(
-        "Prompts ({})  [Tab switch] [Ctrl+S save] [Ctrl+R reload] [←/→/↑/↓ move]",
+        "Prompts ({})  [Tab switch] [Ctrl+S save to markdown] [Ctrl+R reload] [←/→/↑/↓ move]",
         model.prompts_path
     );
     let top_block = Block::default()
@@ -229,7 +229,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     let bottom_title = Line::from(vec![
         Span::raw("Conversation  "),
         Span::styled(run_hint, run_hint_style.add_modifier(Modifier::BOLD)),
-        Span::raw("[Esc quit] [↑/↓ scroll] [End bottom] [Ctrl+S save]"),
+        Span::raw("[Esc quit] [↑/↓ scroll] [End bottom] [Ctrl+S save] [i index]"),
     ]);
     let bottom_block = Block::default()
         .title(bottom_title)
@@ -390,6 +390,21 @@ fn chat_lines_wrapped(model: &Model, width: u16) -> Vec<Line<'static>> {
         out.push(
             Line::from(vec![Span::styled(
                 format!("[agent] {spinner} waiting for response…"),
+                style,
+            )])
+            .left_aligned(),
+        );
+        out.push(Line::from(""));
+    }
+
+    if model.indexing_conversation {
+        let spinner = spinner_char(model.spinner_frame);
+        let style = Style::default()
+            .fg(ElasticTheme::WARNING)
+            .add_modifier(Modifier::ITALIC);
+        out.push(
+            Line::from(vec![Span::styled(
+                format!("[system] {spinner} indexing conversation…"),
                 style,
             )])
             .left_aligned(),

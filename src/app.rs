@@ -187,6 +187,41 @@ fn execute_cmd(
                 }
             });
         }
+        Cmd::IndexConversationToEs { index, id, doc } => {
+            let cfg = model.config.clone();
+            rt.spawn(async move {
+                if cfg.es_host.as_deref().unwrap_or("").is_empty() {
+                    let _ = tx.send(Msg::ConversationIndexFailed {
+                        error: "Missing ES_HOST (configure it to enable indexing).".to_string(),
+                    });
+                    return;
+                }
+                let client = match crate::es::EsClient::new(&cfg) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = tx.send(Msg::ConversationIndexFailed {
+                            error: e.to_string(),
+                        });
+                        return;
+                    }
+                };
+
+                if let Err(e) = client.ensure_index(&index).await {
+                    let _ = tx.send(Msg::ConversationIndexFailed {
+                        error: e.to_string(),
+                    });
+                    return;
+                }
+                if let Err(e) = client.index_conversation(&index, &id, doc).await {
+                    let _ = tx.send(Msg::ConversationIndexFailed {
+                        error: e.to_string(),
+                    });
+                    return;
+                }
+
+                let _ = tx.send(Msg::ConversationIndexed { index, id });
+            });
+        }
         Cmd::LoadEnv => {
             rt.spawn(async move {
                 let cfg = tokio::task::spawn_blocking(crate::config::load_from_env)
@@ -204,7 +239,7 @@ fn execute_cmd(
                     });
                     return;
                 }
-                let client = match crate::elastic::AgentBuilderClient::new(&cfg) {
+                let client = match crate::agentbuilder::AgentBuilderClient::new(&cfg) {
                     Ok(c) => c,
                     Err(e) => {
                         let _ = tx.send(Msg::AgentsLoadFailed {
@@ -235,7 +270,7 @@ fn execute_cmd(
                     });
                     return;
                 }
-                let client = match crate::elastic::AgentBuilderClient::new(&cfg) {
+                let client = match crate::agentbuilder::AgentBuilderClient::new(&cfg) {
                     Ok(c) => c,
                     Err(e) => {
                         let _ = tx.send(Msg::ToolsLoadFailed {
@@ -291,7 +326,7 @@ fn execute_cmd(
                 if let Some(agent_id) = selected_agent_id {
                     cfg.agent_id = agent_id;
                 }
-                let client = match crate::elastic::AgentBuilderClient::new(&cfg) {
+                let client = match crate::agentbuilder::AgentBuilderClient::new(&cfg) {
                     Ok(c) => c,
                     Err(e) => {
                         let _ = tx.send(Msg::RunFailed {
@@ -344,7 +379,7 @@ fn execute_cmd(
                     });
                     return;
                 }
-                let client = match crate::elastic::AgentBuilderClient::new(&cfg) {
+                let client = match crate::agentbuilder::AgentBuilderClient::new(&cfg) {
                     Ok(c) => c,
                     Err(e) => {
                         let _ = tx.send(Msg::AgentUpsertFailed {
@@ -355,16 +390,16 @@ fn execute_cmd(
                     }
                 };
 
-                let config = crate::elastic::CreateAgentConfiguration {
+                let config = crate::agentbuilder::CreateAgentConfiguration {
                     instructions: Some(instructions),
-                    tools: vec![crate::elastic::CreateAgentTools { tool_ids }],
+                    tools: vec![crate::agentbuilder::CreateAgentTools { tool_ids }],
                 };
 
                 let res = if is_edit {
                     client
                         .update_agent(
                             &id,
-                            crate::elastic::UpdateAgentRequest {
+                            crate::agentbuilder::UpdateAgentRequest {
                                 name,
                                 description,
                                 configuration: config,
@@ -376,7 +411,7 @@ fn execute_cmd(
                         .await
                 } else {
                     client
-                        .create_agent(crate::elastic::CreateAgentRequest {
+                        .create_agent(crate::agentbuilder::CreateAgentRequest {
                             id,
                             name,
                             description,

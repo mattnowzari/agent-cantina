@@ -2,8 +2,8 @@ use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 
 use super::model::ChatEntry;
 use crate::config::Config;
-use crate::elastic::AgentSummary;
-use crate::elastic::ToolSummary;
+use crate::agentbuilder::AgentSummary;
+use crate::agentbuilder::ToolSummary;
 
 #[derive(Debug, Clone)]
 pub enum Msg {
@@ -21,10 +21,12 @@ pub enum Msg {
 
     ConversationDumped { path: String },
     ConversationDumpFailed { error: String },
+    ConversationIndexed { index: String, id: String },
+    ConversationIndexFailed { error: String },
 
     EnvLoaded { config: Config },
 
-    AgentsLoaded { agents: Vec<crate::elastic::AgentSummary> },
+    AgentsLoaded { agents: Vec<crate::agentbuilder::AgentSummary> },
     AgentsLoadFailed { error: String },
 
     ToolsLoaded { tools: Vec<ToolSummary> },

@@ -1,6 +1,8 @@
 #[derive(Debug, Clone)]
 pub struct Config {
     pub kibana_url: Option<String>,
+    /// Optional: direct Elasticsearch endpoint for indexing chat history (e.g. https://localhost:9200).
+    pub es_host: Option<String>,
     pub api_key: Option<String>,
     pub space: Option<String>,
     pub agent_id: String,
@@ -12,6 +14,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             kibana_url: None,
+            es_host: None,
             api_key: None,
             space: None,
             agent_id: "elastic-ai-agent".to_string(),
@@ -45,6 +48,7 @@ pub fn load_from_env() -> Config {
     let mut cfg = Config::default();
 
     cfg.kibana_url = env_first_nonempty(&["KIBANA_URL"]);
+    cfg.es_host = env_first_nonempty(&["ES_HOST", "ELASTICSEARCH_HOST", "ELASTIC_HOST"]);
     cfg.api_key = env_first_nonempty(&["API_KEY"]);
 
     cfg.space = env_first_nonempty(&["KIBANA_SPACE", "SPACE"]);
