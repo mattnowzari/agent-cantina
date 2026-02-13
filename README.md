@@ -28,12 +28,14 @@ Agent Cantina requires your Kibana URL and API key to be set as environment vari
 
 ```shell
 export KIBANA_URL=<your-kibana-url>
+export ES_HOST=<your-elasticsearch-url> # optional, only necessary if you want to index chat sessions
 export API_KEY=<your-api-key>
 
 # alternatively, you can create an .env file and Agent Cantina will pick up the environment variables from there
 
 cat > .env <<'EOF'
 KIBANA_URL=<your-kibana-url>
+ES_HOST=<your-elasticsearch-url>
 API_KEY=<your-api-key>
 EOF
 
@@ -132,6 +134,7 @@ Special actions available in the Conversations panel:
 - `r`: Re-run the chat session (good if you make edits to your `PROMPTS.md` and need to try again)
 - `End`: Go to the bottom of the chat window (latest message)
 - `Ctrl-S`: Dump the entire chat history into a Markdown file (written to the current working directory)
+- `i`: Index your chat history into an Elasticsearch index
 
 > Cool thing to try - all three panels will respond to mouse scrolling input!
 
@@ -164,7 +167,6 @@ make build-release # for release builds
 ## Feature wishlist/To-dos (in no particular order)
 
 - Possibly improve the `PROMPTS.md` required formatting to be less verbose
-- Dump chat history into Elasticsearch indices
 - When dumping to markdown, it should save to a configurable directory
 - Ability to load different Markdown files via a file browser-type interface
 - Implement some basic error logging

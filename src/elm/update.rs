@@ -64,6 +64,35 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                     markdown: md,
                 }];
             }
+            // Conversation index:
+            // - Prefer plain `i` because Ctrl+I is indistinguishable from Tab in many terminals.
+            // - Also accept Ctrl+I if a terminal reports it distinctly.
+            let index_shortcut = model.active == ActivePanel::Bottom
+                && (key.code == KeyCode::Char('i')
+                    || key.code == KeyCode::Char('I')
+                    || (key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('i')));
+            if index_shortcut {
+                let Some(conversation_id) = model.conversation_id.clone() else {
+                    model.modal = Some(Modal::Info {
+                        title: "No conversation id".to_string(),
+                        message: "Run a chat session first so we have a conversation_id to index under."
+                            .to_string(),
+                    });
+                    return vec![];
+                };
+                if model.config.es_host.as_deref().unwrap_or("").is_empty() {
+                    model.modal = Some(Modal::Info {
+                        title: "Missing ES_HOST".to_string(),
+                        message: "Set ES_HOST (optional) to enable indexing chat history to Elasticsearch."
+                            .to_string(),
+                    });
+                    return vec![];
+                }
+
+                model.indexing_conversation = true;
+                let (index, id, doc) = build_conversation_es_doc(model, &conversation_id);
+                return vec![Cmd::IndexConversationToEs { index, id, doc }];
+            }
             match key.code {
                 // Panel selection
                 KeyCode::Tab => cycle_panel(model, CycleDir::Forward),
@@ -194,7 +223,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         }
 
         Msg::Tick => {
-            if model.waiting_for_response {
+            if model.waiting_for_response || model.indexing_conversation {
                 model.spinner_frame = model.spinner_frame.wrapping_add(1);
             }
             vec![]
@@ -259,6 +288,25 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         Msg::ConversationDumpFailed { error } => {
             model.modal = Some(super::model::Modal::Error {
                 title: "Failed to dump conversation".to_string(),
+                message: error,
+            });
+            vec![]
+        }
+
+        Msg::ConversationIndexed { index, id } => {
+            model.indexing_conversation = false;
+            model.spinner_frame = 0;
+            model.chat.push(super::model::ChatEntry::system(format!(
+                "Indexed conversation to Elasticsearch: index={index}, id={id}"
+            )));
+            vec![]
+        }
+
+        Msg::ConversationIndexFailed { error } => {
+            model.indexing_conversation = false;
+            model.spinner_frame = 0;
+            model.modal = Some(super::model::Modal::Error {
+                title: "Failed to index conversation".to_string(),
                 message: error,
             });
             vec![]
@@ -492,6 +540,50 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
         }
 
     }
+}
+
+fn build_conversation_es_doc(model: &Model, conversation_id: &str) -> (String, String, serde_json::Value) {
+    const INDEX: &str = "agent_cantina_conversations";
+
+    let agent_id = model
+        .selected_agent_id
+        .as_deref()
+        .unwrap_or(&model.config.agent_id)
+        .to_string();
+
+    let mut prompts: Vec<String> = Vec::new();
+    let mut responses: Vec<String> = Vec::new();
+    let mut turns: Vec<serde_json::Value> = Vec::new();
+
+    let mut pending_prompt: Option<String> = None;
+    for entry in &model.chat {
+        match entry.role {
+            super::model::ChatRole::System => {}
+            super::model::ChatRole::User => {
+                prompts.push(entry.content.clone());
+                pending_prompt = Some(entry.content.clone());
+            }
+            super::model::ChatRole::Agent => {
+                responses.push(entry.content.clone());
+                let prompt = pending_prompt.take().unwrap_or_default();
+                turns.push(serde_json::json!({
+                    "prompt": prompt,
+                    "response": entry.content
+                }));
+            }
+        }
+    }
+
+    let doc = serde_json::json!({
+      "conversation_id": conversation_id,
+      "agent_id": agent_id,
+      "dumped_at": chrono::Local::now().to_rfc3339(),
+      "prompts": prompts.join("\n\n---\n\n"),
+      "responses": responses.join("\n\n---\n\n"),
+      "turns": turns
+    });
+
+    (INDEX.to_string(), conversation_id.to_string(), doc)
 }
 
 fn build_conversation_markdown_dump(model: &Model) -> (String, String) {
