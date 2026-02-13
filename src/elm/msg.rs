@@ -30,8 +30,8 @@ pub enum Msg {
     ToolsLoaded { tools: Vec<ToolSummary> },
     ToolsLoadFailed { error: String },
 
-    AgentCreated { agent: AgentSummary },
-    AgentCreateFailed { error: String },
+    AgentUpserted { agent: AgentSummary, is_edit: bool },
+    AgentUpsertFailed { error: String, is_edit: bool },
 
     AppendChat(ChatEntry),
     SetConversationId(Option<String>),

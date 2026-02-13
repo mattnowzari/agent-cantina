@@ -9,6 +9,8 @@ pub struct AgentSummary {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    pub instructions: Option<String>,
+    pub tool_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -171,6 +173,16 @@ impl AgentBuilderClient {
     }
 
     pub async fn create_agent(&self, req: CreateAgentRequest) -> Result<AgentSummary> {
+        // The create response doesn't necessarily echo the full configuration in a stable shape,
+        // so keep a copy of what we sent to populate the UI immediately.
+        let sent_instructions = req.configuration.instructions.clone();
+        let sent_tool_ids = req
+            .configuration
+            .tools
+            .first()
+            .map(|t| t.tool_ids.clone())
+            .unwrap_or_default();
+
         let url = self.create_agent_url();
         let resp = self
             .http
@@ -193,6 +205,47 @@ impl AgentBuilderClient {
             id: parsed.id,
             name: parsed.name,
             description: Some(parsed.description),
+            instructions: sent_instructions,
+            tool_ids: sent_tool_ids,
+        })
+    }
+
+    pub async fn update_agent(&self, id: &str, req: UpdateAgentRequest) -> Result<AgentSummary> {
+        // The update response doesn't necessarily echo the full configuration in a stable shape,
+        // so keep a copy of what we sent to populate the UI immediately.
+        let sent_instructions = req.configuration.instructions.clone();
+        let sent_tool_ids = req
+            .configuration
+            .tools
+            .first()
+            .map(|t| t.tool_ids.clone())
+            .unwrap_or_default();
+
+        let url = self.update_agent_url(id);
+        let resp = self
+            .http
+            .put(url)
+            .json(&req)
+            .send()
+            .await
+            .context("failed to send request")?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("Agent Builder API error {}: {}", status, text);
+        }
+
+        // Parse a minimal response shape.
+        let parsed: CreateAgentResponse =
+            serde_json::from_str(&text).context("failed to parse update agent response JSON")?;
+
+        Ok(AgentSummary {
+            id: parsed.id,
+            name: parsed.name,
+            description: Some(parsed.description),
+            instructions: sent_instructions,
+            tool_ids: sent_tool_ids,
         })
     }
 
@@ -200,6 +253,16 @@ impl AgentBuilderClient {
         match self.space.as_deref() {
             Some(space) => format!("{}/s/{}/api/agent_builder/agents", self.base_url, space),
             None => format!("{}/api/agent_builder/agents", self.base_url),
+        }
+    }
+
+    fn update_agent_url(&self, id: &str) -> String {
+        match self.space.as_deref() {
+            Some(space) => format!(
+                "{}/s/{}/api/agent_builder/agents/{}",
+                self.base_url, space, id
+            ),
+            None => format!("{}/api/agent_builder/agents/{}", self.base_url, id),
         }
     }
 }
@@ -258,10 +321,33 @@ fn parse_agents(v: serde_json::Value) -> Result<Vec<AgentSummary>> {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
+        let instructions = obj
+            .get("configuration")
+            .and_then(|v| v.get("instructions"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let tool_ids = obj
+            .get("configuration")
+            .and_then(|v| v.get("tools"))
+            .and_then(|v| v.as_array())
+            .and_then(|tools| tools.first())
+            .and_then(|v| v.get("tool_ids"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>()
+            })
+            .unwrap_or_default();
+
         out.push(AgentSummary {
             id,
             name,
             description,
+            instructions,
+            tool_ids,
         });
     }
 
@@ -336,6 +422,23 @@ struct ListToolsResponse {
 #[derive(Debug, Serialize)]
 pub struct CreateAgentRequest {
     pub id: String,
+    pub name: String,
+    pub description: String,
+    pub configuration: CreateAgentConfiguration,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_symbol: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub labels: Vec<String>,
+}
+
+/// `PUT /api/agent_builder/agents/{id}`
+///
+/// Docs:
+/// - `https://www.elastic.co/docs/api/doc/kibana/operation/operation-put-agent-builder-agents-id`
+#[derive(Debug, Serialize)]
+pub struct UpdateAgentRequest {
     pub name: String,
     pub description: String,
     pub configuration: CreateAgentConfiguration,

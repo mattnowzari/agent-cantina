@@ -327,7 +327,8 @@ fn execute_cmd(
                 let _ = tx.send(Msg::RunFinished);
             });
         }
-        Cmd::CreateAgent {
+        Cmd::UpsertAgent {
+            is_edit,
             id,
             name,
             description,
@@ -337,47 +338,68 @@ fn execute_cmd(
             let cfg = model.config.clone();
             rt.spawn(async move {
                 if !cfg.is_ready() {
-                    let _ = tx.send(Msg::AgentCreateFailed {
+                    let _ = tx.send(Msg::AgentUpsertFailed {
                         error: "Missing KIBANA_URL/ES_HOST and/or API_KEY/ES_API_KEY.".to_string(),
+                        is_edit,
                     });
                     return;
                 }
                 let client = match crate::elastic::AgentBuilderClient::new(&cfg) {
                     Ok(c) => c,
                     Err(e) => {
-                        let _ = tx.send(Msg::AgentCreateFailed {
+                        let _ = tx.send(Msg::AgentUpsertFailed {
                             error: e.to_string(),
+                            is_edit,
                         });
                         return;
                     }
                 };
 
-                let req = crate::elastic::CreateAgentRequest {
-                    id,
-                    name,
-                    description,
-                    configuration: crate::elastic::CreateAgentConfiguration {
-                        instructions: Some(instructions),
-                        tools: vec![crate::elastic::CreateAgentTools {
-                            tool_ids,
-                        }],
-                    },
-                    // Keep avatar minimal; users can edit later in Kibana.
-                    avatar_color: None,
-                    avatar_symbol: None,
-                    labels: vec![],
+                let config = crate::elastic::CreateAgentConfiguration {
+                    instructions: Some(instructions),
+                    tools: vec![crate::elastic::CreateAgentTools { tool_ids }],
                 };
 
-                match client.create_agent(req).await {
+                let res = if is_edit {
+                    client
+                        .update_agent(
+                            &id,
+                            crate::elastic::UpdateAgentRequest {
+                                name,
+                                description,
+                                configuration: config,
+                                avatar_color: None,
+                                avatar_symbol: None,
+                                labels: vec![],
+                            },
+                        )
+                        .await
+                } else {
+                    client
+                        .create_agent(crate::elastic::CreateAgentRequest {
+                            id,
+                            name,
+                            description,
+                            configuration: config,
+                            // Keep avatar minimal; users can edit later in Kibana.
+                            avatar_color: None,
+                            avatar_symbol: None,
+                            labels: vec![],
+                        })
+                        .await
+                };
+
+                match res {
                     Ok(agent) => {
-                        let _ = tx.send(Msg::AgentCreated { agent });
+                        let _ = tx.send(Msg::AgentUpserted { agent, is_edit });
                     }
                     Err(e) => {
-                        let _ = tx.send(Msg::AgentCreateFailed {
+                        let _ = tx.send(Msg::AgentUpsertFailed {
                             error: e.to_string(),
+                            is_edit,
                         });
                     }
-                }
+                };
             });
         }
     }

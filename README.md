@@ -116,6 +116,8 @@ Use the `Left/Right` arrows to switch between the `Prompt` and `Tools` tabs. In 
 
 When you are done configuring your agent, use `Ctrl-S` to create your Agent!
 
+Once you Agent has been created, you can go back and edit it by hitting `e` from within the Agents panel.
+
 <img src="images/new_agent_set_tools_window.png" alt="New Agent window" width="600" />
 
 
@@ -167,4 +169,3 @@ make build-release # for release builds
 - Ability to load different Markdown files via a file browser-type interface
 - Implement some basic error logging
 - Track conversation IDs so certain conversations can be resumed, even after Agent Cantina is exited and started again
-- Allow editing of agents, not just creation

@@ -7,7 +7,8 @@ pub enum Cmd {
     LoadAgents,
     LoadTools,
     StartRun,
-    CreateAgent {
+    UpsertAgent {
+        is_edit: bool,
         id: String,
         name: String,
         description: String,

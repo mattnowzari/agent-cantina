@@ -103,7 +103,7 @@ pub fn view(frame: &mut Frame, model: &mut Model) {
     // Agents window
     let selected_agent_label = selected_agent_label(model);
     let agents_title = format!(
-        "Agents  [Tab switch] [↑/↓ select] [Enter choose+run] [n new] [Ctrl+R reload]  selected: {}",
+        "Agents  [Tab switch] [↑/↓ select] [Enter choose+run] [n new] [e edit] [Ctrl+R reload]  selected: {}",
         selected_agent_label
     );
     let agents_block = Block::default()
@@ -651,8 +651,12 @@ fn render_create_agent_modal(
     rect: ratatui::layout::Rect,
     state: &mut CreateAgentModal,
 ) {
+    let title = match &state.mode {
+        super::model::AgentEditorMode::Create => "Create agent",
+        super::model::AgentEditorMode::Edit { .. } => "Edit agent",
+    };
     let block = Block::default()
-        .title("Create agent")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(ElasticTheme::ACCENT_SECONDARY).add_modifier(Modifier::BOLD));
     let inner = block.inner(rect);
