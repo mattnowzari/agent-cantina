@@ -113,6 +113,7 @@ pub enum Modal {
 
 #[derive(Debug, Clone)]
 pub struct CreateAgentModal {
+    pub mode: AgentEditorMode,
     pub name: String,
     pub description: String,
     pub instructions: String,
@@ -140,6 +141,7 @@ impl Default for CreateAgentModal {
             "platform.core.get_document_by_id".to_string(),
         ];
         Self {
+            mode: AgentEditorMode::Create,
             name: String::new(),
             description: String::new(),
             instructions: String::new(),
@@ -157,6 +159,12 @@ impl Default for CreateAgentModal {
             error: None,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum AgentEditorMode {
+    Create,
+    Edit { agent_id: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

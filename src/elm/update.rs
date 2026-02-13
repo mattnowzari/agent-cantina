@@ -2,7 +2,7 @@ use ratatui::crossterm::event::{KeyCode, KeyModifiers, MouseEventKind};
 
 use super::{
     Cmd, Model, Msg,
-    model::{ActivePanel, CreateAgentField, CreateAgentModal, CreateAgentTab, Modal},
+    model::{ActivePanel, AgentEditorMode, CreateAgentField, CreateAgentModal, CreateAgentTab, Modal},
 };
 
 pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
@@ -130,6 +130,35 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                         state.tools_loading = true;
                         model.modal = Some(Modal::CreateAgent(state));
                         // Kick off tool discovery immediately (for the Tools tab).
+                        return vec![Cmd::LoadTools];
+                    }
+                }
+                // Edit selected agent
+                KeyCode::Char('e') => {
+                    if model.active == ActivePanel::Agents {
+                        if model.agents.is_empty() {
+                            return vec![];
+                        }
+                        let idx = model.agent_selected_index.min(model.agents.len() - 1);
+                        let agent = model.agents[idx].clone();
+
+                        let mut state = CreateAgentModal::default();
+                        state.mode = AgentEditorMode::Edit {
+                            agent_id: agent.id.clone(),
+                        };
+                        state.name = agent.name;
+                        state.description = agent.description.unwrap_or_default();
+                        state.instructions = agent.instructions.unwrap_or_default();
+                        state.selected_tool_ids = agent.tool_ids;
+                        if state.selected_tool_ids.is_empty() {
+                            // Fallback to defaults if the agent has no tools.
+                            state.selected_tool_ids = CreateAgentModal::default().selected_tool_ids;
+                        }
+                        state.tools_loading = true;
+                        state.tab = CreateAgentTab::Prompt;
+                        state.focus = CreateAgentField::Name;
+
+                        model.modal = Some(Modal::CreateAgent(state));
                         return vec![Cmd::LoadTools];
                     }
                 }
@@ -364,9 +393,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             vec![]
         }
 
-        Msg::AgentCreated { agent } => {
+        Msg::AgentUpserted { agent, is_edit } => {
             model.chat.push(super::model::ChatEntry::system(format!(
-                "Created agent: {} ({})",
+                "{} agent: {} ({})",
+                if is_edit { "Updated" } else { "Created" },
                 agent.name, agent.id
             )));
             // Close the create-agent modal if it was open.
@@ -387,9 +417,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
             vec![Cmd::LoadAgents]
         }
 
-        Msg::AgentCreateFailed { error } => {
+        Msg::AgentUpsertFailed { error, is_edit } => {
             model.chat.push(super::model::ChatEntry::system(format!(
-                "Create agent failed: {}",
+                "{} agent failed: {}",
+                if is_edit { "Update" } else { "Create" },
                 error
             )));
             // If the create-agent modal is open, show the error inline there.
@@ -398,7 +429,11 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                 state.error = Some(error);
             } else {
                 model.modal = Some(Modal::Error {
-                    title: "Failed to create agent".to_string(),
+                    title: if is_edit {
+                        "Failed to update agent".to_string()
+                    } else {
+                        "Failed to create agent".to_string()
+                    },
                     message: error,
                 });
             }
@@ -831,9 +866,12 @@ fn update_create_agent_modal(
             return (false, vec![]);
         }
 
-        let id = generate_agent_id(&name);
+        let (is_edit, id) = match &state.mode {
+            AgentEditorMode::Create => (false, generate_agent_id(&name)),
+            AgentEditorMode::Edit { agent_id } => (true, agent_id.clone()),
+        };
         let description = if description.is_empty() {
-            format!("Custom agent created in Agent Cantina: {name}")
+            name.clone()
         } else {
             description
         };
@@ -841,7 +879,8 @@ fn update_create_agent_modal(
         state.submitting = true;
         return (
             false,
-            vec![Cmd::CreateAgent {
+            vec![Cmd::UpsertAgent {
+                is_edit,
                 id,
                 name,
                 description,
