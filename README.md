@@ -65,6 +65,7 @@ Each panel serves a specific purpose, and has its own set of unique actions.
 You can cycle through the current "active" panel with the `Tab` key.
 
 ### The Prompts panel and `PROMPTS.md`
+---
 This is where you can view and edit your `PROMPTS.md` file. If no `PROMPTS.md` is present, Agent Cantina will create a basic one for you and load it.
 
 <img src="images/prompts_panel.png" alt="Prompts panel" width="600" />
@@ -88,7 +89,7 @@ Special actions available in the Prompts panel:
 - `Ctrl-R`: Reload the `PROMPTS.md` from disk
 
 ### The Agents panel
-
+---
 This is where you can select an Agent to send your prompts to.
 
 <img src="images/agents_panel.png" alt="Agents panel" width="600" />
@@ -126,7 +127,7 @@ Once you Agent has been created, you can go back and edit it by hitting `e` from
 
 
 ### The Conversation panel
-
+---
 This is where you can see the chat session prompts and responses, as well as system messages.
 
 <img src="images/conversation_panel.png" alt="Conversation panel" width="600" />
