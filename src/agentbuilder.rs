@@ -249,6 +249,23 @@ impl AgentBuilderClient {
         })
     }
 
+    pub async fn delete_agent(&self, id: &str) -> Result<()> {
+        let url = self.delete_agent_url(id);
+        let resp = self
+            .http
+            .delete(url)
+            .send()
+            .await
+            .context("failed to send request")?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("Agent Builder API error {}: {}", status, text);
+        }
+        Ok(())
+    }
+
     fn create_agent_url(&self) -> String {
         match self.space.as_deref() {
             Some(space) => format!("{}/s/{}/api/agent_builder/agents", self.base_url, space),
@@ -257,6 +274,16 @@ impl AgentBuilderClient {
     }
 
     fn update_agent_url(&self, id: &str) -> String {
+        match self.space.as_deref() {
+            Some(space) => format!(
+                "{}/s/{}/api/agent_builder/agents/{}",
+                self.base_url, space, id
+            ),
+            None => format!("{}/api/agent_builder/agents/{}", self.base_url, id),
+        }
+    }
+
+    fn delete_agent_url(&self, id: &str) -> String {
         match self.space.as_deref() {
             Some(space) => format!(
                 "{}/s/{}/api/agent_builder/agents/{}",

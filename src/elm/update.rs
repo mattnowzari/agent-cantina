@@ -2,7 +2,10 @@ use ratatui::crossterm::event::{KeyCode, KeyModifiers, MouseEventKind};
 
 use super::{
     Cmd, Model, Msg,
-    model::{ActivePanel, AgentEditorMode, CreateAgentField, CreateAgentModal, CreateAgentTab, Modal},
+    model::{
+        ActivePanel, AgentEditorMode, ConfirmDeleteAgentModal, CreateAgentField, CreateAgentModal,
+        CreateAgentTab, Modal,
+    },
 };
 
 pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
@@ -189,6 +192,19 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
 
                         model.modal = Some(Modal::CreateAgent(state));
                         return vec![Cmd::LoadTools];
+                    }
+                }
+                // Delete selected agent
+                KeyCode::Char('d') => {
+                    if model.active == ActivePanel::Agents && !model.agents.is_empty() {
+                        let idx = model.agent_selected_index.min(model.agents.len() - 1);
+                        let agent = model.agents[idx].clone();
+                        model.modal = Some(Modal::ConfirmDeleteAgent(ConfirmDeleteAgentModal {
+                            agent_id: agent.id,
+                            agent_name: agent.name,
+                            deleting: false,
+                        }));
+                        return vec![];
                     }
                 }
 
@@ -482,6 +498,47 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Cmd> {
                     } else {
                         "Failed to create agent".to_string()
                     },
+                    message: error,
+                });
+            }
+            vec![]
+        }
+
+        Msg::AgentDeleted { id, name } => {
+            // Close delete modal if open.
+            if matches!(model.modal, Some(Modal::ConfirmDeleteAgent(_))) {
+                model.modal = None;
+            }
+            if model.selected_agent_id.as_deref() == Some(id.as_str()) {
+                model.selected_agent_id = None;
+            }
+            model.chat.push(super::model::ChatEntry::system(format!(
+                "Deleted agent: {} ({})",
+                name, id
+            )));
+
+            // Reload list.
+            model.agents_loaded = false;
+            model.agents_loading = false;
+            model.agents_error = None;
+            model.agents.clear();
+            model.agent_selected_index = 0;
+            model.agents_list_state = ratatui::widgets::ListState::default();
+            model.active = ActivePanel::Agents;
+            vec![Cmd::LoadAgents]
+        }
+
+        Msg::AgentDeleteFailed { error } => {
+            // If delete modal is open, stop "deleting" and surface error.
+            if let Some(Modal::ConfirmDeleteAgent(state)) = model.modal.as_mut() {
+                state.deleting = false;
+                model.modal = Some(Modal::Error {
+                    title: "Failed to delete agent".to_string(),
+                    message: error,
+                });
+            } else {
+                model.modal = Some(Modal::Error {
+                    title: "Failed to delete agent".to_string(),
                     message: error,
                 });
             }
@@ -864,6 +921,19 @@ fn update_modal_key(model: &mut Model, key: ratatui::crossterm::event::KeyEvent)
                 model.modal = None;
             }
             cmds
+        }
+        Modal::ConfirmDeleteAgent(state) => {
+            if key.code == KeyCode::Esc || matches!(key.code, KeyCode::Char('n') | KeyCode::Char('N')) {
+                model.modal = None;
+                return vec![];
+            }
+            if matches!(key.code, KeyCode::Char('y') | KeyCode::Char('Y')) && !state.deleting {
+                state.deleting = true;
+                return vec![Cmd::DeleteAgent {
+                    id: state.agent_id.clone(),
+                }];
+            }
+            vec![]
         }
     }
 }

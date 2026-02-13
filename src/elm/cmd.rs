@@ -16,4 +16,5 @@ pub enum Cmd {
         instructions: String,
         tool_ids: Vec<String>,
     },
+    DeleteAgent { id: String },
 }
