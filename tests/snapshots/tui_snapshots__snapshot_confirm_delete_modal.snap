@@ -1,0 +1,28 @@
+---
+source: tests/tui_snapshots.rs
+assertion_line: 123
+expression: "render_model(&mut model, 70, 22)"
+---
+┌Prompts (PROMPTS.md)  [Tab switch] [Ctrl+S save to markdown] [Ctrl+R┐
+│|## Prompt 1                                                       ▲│
+│What is Elasticsearch?                                             █│
+│                                                                   ║│
+│## Promp┌Confirm deletion──────────────────────────────────┐       ▼│
+└────────│Delete this agent? This cannot be undone.         │────────┘
+         │                                                  │
+┌Agents  │- Name: Researcher                                │ [e edit┐
+│Research│- Id: a-1                                         │       ▲│
+│Finds th│                                                  │       █│
+│Writer  │Press Y to delete, N to cancel.                   │       █│
+│        │                                                  │       █│
+│        │                                                  │       █│
+│        │                                                  │       ║│
+│        │                                                  │       ▼│
+└────────│                                                  │────────┘
+         │                                                  │
+┌Conversa└──────────────────────────────────────────────────┘Ctrl+S s┐
+│ │Hi!│                                                             ▲│
+│ └───┘                                                             █│
+│                                                                   ▼│
+└────────────────────────────────────────────────────────────────────┘
+

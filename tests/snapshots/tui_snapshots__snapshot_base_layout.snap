@@ -1,0 +1,28 @@
+---
+source: tests/tui_snapshots.rs
+assertion_line: 99
+expression: "render_model(&mut model, 70, 22)"
+---
+┌Prompts (PROMPTS.md)  [Tab switch] [Ctrl+S save to markdown] [Ctrl+R┐
+│|## Prompt 1                                                       ▲│
+│What is Elasticsearch?                                             █│
+│                                                                   ║│
+│## Prompt 2                                                        ▼│
+└────────────────────────────────────────────────────────────────────┘
+
+┌Agents  [Tab switch] [↑/↓ select] [Enter choose+run] [n new] [e edit┐
+│Researcher  (a-1)                                                  ▲│
+│Finds things                                                       █│
+│Writer  (a-2)                                                      █│
+│                                                                   █│
+│                                                                   █│
+│                                                                   ║│
+│                                                                   ▼│
+└────────────────────────────────────────────────────────────────────┘
+
+┌Conversation  [r run] [Esc quit] [↑/↓ scroll] [End bottom] [Ctrl+S s┐
+│ │Hi!│                                                             ▲│
+│ └───┘                                                             █│
+│                                                                   ▼│
+└────────────────────────────────────────────────────────────────────┘
+

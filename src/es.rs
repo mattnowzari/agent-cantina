@@ -120,3 +120,28 @@ fn index_mapping_body() -> serde_json::Value {
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_base_url_adds_scheme_and_trims_trailing_slash() {
+        assert_eq!(normalize_base_url("localhost:9200/"), "https://localhost:9200");
+        assert_eq!(normalize_base_url("http://127.0.0.1:9200/"), "http://127.0.0.1:9200");
+        assert_eq!(
+            normalize_base_url(" https://example.com:9200/foo/ "),
+            "https://example.com:9200/foo"
+        );
+    }
+
+    #[test]
+    fn mapping_body_has_expected_semantic_text_fields() {
+        let v = index_mapping_body();
+        let props = &v["mappings"]["properties"];
+        assert_eq!(props["prompts"]["type"], "semantic_text");
+        assert_eq!(props["responses"]["type"], "semantic_text");
+        assert_eq!(props["conversation_id"]["type"], "keyword");
+        assert_eq!(props["dumped_at"]["type"], "date");
+    }
+}
+

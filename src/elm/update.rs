@@ -903,6 +903,122 @@ fn wrap_one_line(s: &str, width: u16) -> Vec<String> {
         .collect()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agentbuilder::AgentSummary;
+    use crate::elm::model::{ActivePanel, ChatEntry, ChatRole, Modal};
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn key_ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn markdown_fence_is_longer_than_any_backtick_run() {
+        let s = "hi ``` there ```` and `";
+        let fence = markdown_fence(s);
+        assert!(fence.len() >= 3);
+        assert!(fence.len() > 4); // longest run in s is 4
+        assert!(fence.chars().all(|c| c == '`'));
+    }
+
+    #[test]
+    fn build_conversation_es_doc_excludes_system_and_pairs_turns() {
+        let mut model = Model::default();
+        model.selected_agent_id = Some("agent-1".to_string());
+        model.chat = vec![
+            ChatEntry {
+                role: ChatRole::System,
+                timestamp: "00:00:01".to_string(),
+                content: "sys".to_string(),
+            },
+            ChatEntry {
+                role: ChatRole::User,
+                timestamp: "00:00:02".to_string(),
+                content: "p1".to_string(),
+            },
+            ChatEntry {
+                role: ChatRole::Agent,
+                timestamp: "00:00:03".to_string(),
+                content: "r1".to_string(),
+            },
+            ChatEntry {
+                role: ChatRole::User,
+                timestamp: "00:00:04".to_string(),
+                content: "p2".to_string(),
+            },
+        ];
+
+        let (_index, id, doc) = build_conversation_es_doc(&model, "conv-123");
+        assert_eq!(id, "conv-123");
+        assert_eq!(doc["conversation_id"], "conv-123");
+        assert_eq!(doc["agent_id"], "agent-1");
+
+        let prompts = doc["prompts"].as_str().unwrap();
+        assert!(prompts.contains("p1"));
+        assert!(prompts.contains("p2"));
+        assert!(!prompts.contains("sys"));
+
+        let responses = doc["responses"].as_str().unwrap();
+        assert!(responses.contains("r1"));
+        assert!(!responses.contains("sys"));
+
+        let turns = doc["turns"].as_array().unwrap();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0]["prompt"], "p1");
+        assert_eq!(turns[0]["response"], "r1");
+    }
+
+    #[test]
+    fn prompts_editor_ctrl_s_and_ctrl_r_emit_commands() {
+        let mut model = Model::default();
+        model.prompts_path = "PROMPTS.md".to_string();
+
+        let cmds = handle_prompts_editor_key(&mut model, key_ctrl(KeyCode::Char('s'))).unwrap();
+        assert!(matches!(cmds[0], Cmd::SavePromptsFile { .. }));
+
+        let cmds = handle_prompts_editor_key(&mut model, key_ctrl(KeyCode::Char('r'))).unwrap();
+        assert!(matches!(cmds[0], Cmd::LoadPromptsFile { .. }));
+    }
+
+    #[test]
+    fn delete_flow_opens_confirm_modal_and_y_emits_delete_cmd() {
+        let mut model = Model::default();
+        model.active = ActivePanel::Agents;
+        model.agents = vec![AgentSummary {
+            id: "a-1".to_string(),
+            name: "Agent 1".to_string(),
+            description: None,
+            instructions: None,
+            tool_ids: vec![],
+        }];
+        model.agent_selected_index = 0;
+
+        let cmds = update(&mut model, Msg::Key(key(KeyCode::Char('d'))));
+        assert!(cmds.is_empty());
+        assert!(matches!(model.modal, Some(Modal::ConfirmDeleteAgent(_))));
+
+        let cmds = update(&mut model, Msg::Key(key(KeyCode::Char('y'))));
+        assert_eq!(cmds.len(), 1);
+        assert!(matches!(cmds[0], Cmd::DeleteAgent { ref id } if id == "a-1"));
+    }
+}
+
 fn update_modal_key(model: &mut Model, key: ratatui::crossterm::event::KeyEvent) -> Vec<Cmd> {
     let Some(modal) = model.modal.as_mut() else {
         return vec![];
