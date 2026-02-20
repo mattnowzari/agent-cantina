@@ -567,6 +567,31 @@ fn wrap_one_line(s: &str, width: u16) -> Vec<String> {
         .collect()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grapheme_width_handles_vs16_symbols() {
+        // "⚔️" often renders as width 2 in terminals even though the base symbol is width 1.
+        assert_eq!(terminalish_display_width("⚔️"), 2);
+    }
+
+    #[test]
+    fn grapheme_width_handles_zwj_sequences_reasonably() {
+        // We don't require an exact width across all terminals, but this should be non-zero.
+        assert!(terminalish_display_width("🏄‍♂️") >= 2);
+    }
+
+    #[test]
+    fn wrap_one_line_bubble_respects_max_width_for_common_text() {
+        let lines = wrap_one_line_bubble("hello world", 5);
+        for line in lines {
+            assert!(terminalish_display_width(&line) <= 5);
+        }
+    }
+}
+
 fn wrap_preserve_newlines(s: &str, width: u16) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in s.lines() {

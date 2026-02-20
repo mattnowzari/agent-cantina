@@ -152,6 +152,25 @@ make build # for debug builds
 make build-release # for release builds
 ```
 
+## Testing
+
+```shell
+cargo test
+```
+
+Snapshot tests use [`insta`](https://insta.rs/). To (re)generate snapshots:
+
+```shell
+INSTA_UPDATE=always cargo test
+```
+
+If you prefer the `cargo-insta` workflow, install it and accept snapshots:
+
+```shell
+cargo install cargo-insta
+cargo insta accept
+```
+
 ## FAQ
 
 - **Question**: Every chat run I perform creates a new chat session in Agent Builder. Is there any way I can add new prompts and resume an existing chat session?

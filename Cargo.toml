@@ -14,3 +14,9 @@ textwrap = "0.16"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 chrono = { version = "0.4", features = ["clock"] }
 unicode-segmentation = "1"
+
+[dev-dependencies]
+insta = "1.46.3"
+pretty_assertions = "1.4.1"
+tempfile = "3.25.0"
+wiremock = "0.6.5"

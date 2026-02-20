@@ -99,6 +99,11 @@ fn split_on_headings(raw: &str) -> Vec<String> {
             continue;
         }
 
+        // Skip top-level title lines even before we see the first prompt heading.
+        if !saw_heading && line.starts_with("# ") {
+            continue;
+        }
+
         // Skip top-level title lines if we're going to parse prompts from headings.
         if saw_heading && line.starts_with("# ") {
             continue;
@@ -123,4 +128,73 @@ fn split_on_blank_paragraphs(raw: &str) -> Vec<String> {
         .filter(|chunk| !chunk.starts_with('#'))
         .map(|chunk| chunk.to_string())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_fenced_prompts_wins_over_other_modes() {
+        let raw = r#"# Prompts
+
+```prompt
+first
+```
+
+## Heading that should be ignored
+not used
+
+```prompt
+second
+```
+"#
+        .to_string();
+
+        let pf = parse_prompts_markdown(raw);
+        assert_eq!(pf.prompts, vec!["first".to_string(), "second".to_string()]);
+    }
+
+    #[test]
+    fn parse_headings_splits_and_ignores_top_level_title() {
+        let raw = r#"# Prompts
+
+## Prompt 1
+Hello
+
+### Prompt 2
+World
+"#
+        .to_string();
+
+        let pf = parse_prompts_markdown(raw);
+        assert_eq!(pf.prompts, vec!["Hello".to_string(), "World".to_string()]);
+    }
+
+    #[test]
+    fn parse_blank_paragraphs_is_fallback_and_ignores_heading_chunks() {
+        let raw = r#"# Prompts
+
+para 1
+
+para 2
+
+# Not a prompt
+"#
+        .to_string();
+
+        let pf = parse_prompts_markdown(raw);
+        assert_eq!(pf.prompts, vec!["para 1".to_string(), "para 2".to_string()]);
+    }
+
+    #[test]
+    fn load_or_create_creates_file_if_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("PROMPTS.md");
+        let pf = load_or_create_prompts_file(path.to_str().unwrap()).unwrap();
+
+        // Template has at least two prompts in the default content.
+        assert!(pf.prompts.len() >= 2);
+        assert!(path.exists());
+    }
 }

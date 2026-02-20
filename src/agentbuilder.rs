@@ -383,6 +383,66 @@ fn parse_agents(v: serde_json::Value) -> Result<Vec<AgentSummary>> {
     Ok(out)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_base_url_adds_scheme_and_trims_trailing_slash() {
+        assert_eq!(normalize_base_url("localhost:5601/"), "https://localhost:5601");
+        assert_eq!(
+            normalize_base_url(" https://example.com/foo/ "),
+            "https://example.com/foo"
+        );
+        assert_eq!(
+            normalize_base_url("http://example.com/"),
+            "http://example.com"
+        );
+    }
+
+    #[test]
+    fn parse_agents_handles_results_shape_and_extracts_config() {
+        let v = serde_json::json!({
+            "results": [
+                {
+                    "id": "a-1",
+                    "name": "Agent 1",
+                    "description": "desc",
+                    "configuration": {
+                        "instructions": "do things",
+                        "tools": [
+                            { "tool_ids": ["t1", "t2"] }
+                        ]
+                    }
+                }
+            ]
+        });
+
+        let agents = parse_agents(v).unwrap();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].id, "a-1");
+        assert_eq!(agents[0].name, "Agent 1");
+        assert_eq!(agents[0].description.as_deref(), Some("desc"));
+        assert_eq!(agents[0].instructions.as_deref(), Some("do things"));
+        assert_eq!(agents[0].tool_ids, vec!["t1".to_string(), "t2".to_string()]);
+    }
+
+    #[test]
+    fn parse_agents_handles_array_shape() {
+        let v = serde_json::json!([
+            {
+                "id": "a-2",
+                "name": "Agent 2"
+            }
+        ]);
+
+        let agents = parse_agents(v).unwrap();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].id, "a-2");
+        assert_eq!(agents[0].name, "Agent 2");
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct ConverseRequest<'a> {
     input: &'a str,
